@@ -35,6 +35,7 @@ import 'package:PiliPlus/utils/android/android_helper.dart';
 import 'package:PiliPlus/utils/android/bindings.g.dart';
 import 'package:PiliPlus/utils/asset_utils.dart';
 import 'package:PiliPlus/utils/device_utils.dart';
+import 'package:PiliPlus/utils/display_mode_utils.dart';
 import 'package:PiliPlus/utils/duration_utils.dart';
 import 'package:PiliPlus/utils/extension/box_ext.dart';
 import 'package:PiliPlus/utils/extension/num_ext.dart';
@@ -461,6 +462,21 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
   bool enableHeart = true;
   late final String? hwdec = Pref.enableHA ? Pref.hardwareDecoding : null;
 
+  // 低功耗相关（仅 Android）
+  /// MediaCodec 直接把画面写入 Flutter 纹理（--vo=mediacodec_embed），
+  /// 省去 mpv 每帧一次的 GPU 渲染。依赖硬解，关闭硬解时不生效。
+  late final bool lowPowerVo =
+      Platform.isAndroid && hwdec != null && Pref.lowPowerVo;
+  late final bool _lowPowerRefreshRate =
+      Platform.isAndroid && Pref.lowPowerRefreshRate;
+  late final int _heartBeatInterval =
+      Platform.isAndroid && Pref.lowPowerNetwork ? 30 : 5;
+  AppLifecycleListener? _lifecycleListener;
+
+  /// 因进入后台而关闭了视频轨
+  bool _videoDisabledInBg = false;
+  static bool _embedFailToasted = false;
+
   late final progressType = Pref.btmProgressBehavior;
   late final enableQuickDouble = Pref.enableQuickDouble;
   late final fullScreenGestureReverse = Pref.fullScreenGestureReverse;
@@ -648,6 +664,12 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
       enableHeart = false;
     }
 
+    if (Platform.isAndroid && Pref.lowPowerBgNoVideo) {
+      _lifecycleListener = AppLifecycleListener(
+        onStateChange: _onAppLifecycleStateChanged,
+      );
+    }
+
     if (Platform.isAndroid && autoPiP) {
       if (DeviceUtils.sdkInt < 31) {
         AndroidHelper$ToDart.onUserLeaveHint = Runnable.implement(
@@ -665,6 +687,48 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
     if (playerStatus.isPlaying && _isCurrVideoPage) {
       enterPip();
     }
+  }
+
+  /// 后台/息屏时关闭视频轨：mpv 会同时停止视频流的下载与解码，只保留音频；
+  /// 回到前台时恢复。小窗、直播、听视频模式下不处理。
+  void _onAppLifecycleStateChanged(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused) {
+      _disableVideoInBackground();
+    } else if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.resumed) {
+      _restoreVideoInForeground();
+    }
+  }
+
+  void _disableVideoInBackground() {
+    if (_videoDisabledInBg || isLive || onlyPlayAudio.value || isPipMode) {
+      return;
+    }
+    final player = _videoPlayerController;
+    if (player == null) return;
+    _videoDisabledInBg = true;
+    player.setProperty('file-local-options/vid', 'no');
+  }
+
+  void _restoreVideoInForeground() {
+    if (!_videoDisabledInBg) return;
+    _videoDisabledInBg = false;
+    if (onlyPlayAudio.value) return;
+    _videoPlayerController?.setProperty('file-local-options/vid', 'auto');
+  }
+
+  /// 后台期间重新打开的媒体同样不加载视频轨；回到前台后去掉该参数。
+  Media _applyBgVideoOption(Media media) {
+    final extras = media.extras;
+    final hasVid = extras?.containsKey('vid') ?? false;
+    if (hasVid == _videoDisabledInBg) return media;
+    final newExtras = <String, String>{...?extras};
+    if (_videoDisabledInBg) {
+      newExtras['vid'] = 'no';
+    } else {
+      newExtras.remove('vid');
+    }
+    return media.copyWith(extras: newExtras);
   }
 
   // 获取实例 传参
@@ -849,15 +913,21 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
     _videoController = await VideoController.create(
       player,
       configuration: VideoControllerConfiguration(
+        // mediacodec_embed 只能显示 MediaCodec 直出的帧，必须搭配 hwdec=mediacodec
+        vo: lowPowerVo ? 'mediacodec_embed' : null,
         enableHardwareAcceleration: hwdec != null,
         androidAttachSurfaceAfterVideoParameters: false,
-        hwdec: hwdec,
+        hwdec: lowPowerVo ? 'mediacodec' : hwdec,
       ),
     );
 
     player.setMediaHeader(userAgent: BrowserUa.pc, referer: HttpString.baseUrl);
 
     _startListeners(player);
+
+    if (_lowPowerRefreshRate) {
+      DisplayModeUtils.limitForPlayback();
+    }
 
     return player;
   }
@@ -899,6 +969,8 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
         ...liveBuffer
       else
         ...buffer,
+      // 后台自动连播的下一个视频同样只加载音频
+      if (_videoDisabledInBg) 'vid': 'no',
     };
 
     String video = dataSource.videoSource;
@@ -935,7 +1007,7 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
       return null;
     }
     if (_videoPlayerController case final ctr? when (ctr.current.isNotEmpty)) {
-      var media = ctr.current.last;
+      var media = _applyBgVideoOption(ctr.current.last);
       if (!isLive) media = media.copyWith(start: ctr.state.position);
       return ctr.open(media, play: true);
     }
@@ -1090,6 +1162,7 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
             debugPrint(log.toString());
           }
         })),
+      if (lowPowerVo) stream.log.listen(_onLowPowerVoLog),
       stream.error.listen((String event) {
         if (dataSource is FileSource &&
             event.startsWith("Failed to open file")) {
@@ -1145,6 +1218,21 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
         }
       }),
     ];
+  }
+
+  /// mediacodec_embed 只能显示 MediaCodec 硬解出的帧，硬解失败时画面会黑屏，
+  /// 此时提示用户关闭该选项
+  void _onLowPowerVoLog(PlayerLog log) {
+    if (_embedFailToasted || onlyPlayAudio.value) return;
+    final text = log.text;
+    if (text.startsWith('Cannot convert decoder/filter output') ||
+        text.contains('selected video_out')) {
+      _embedFailToasted = true;
+      SmartDialog.showToast(
+        '低功耗视频直出无法显示当前视频，请在 设置-视频 中关闭「低功耗视频直出」后重新进入',
+        displayTime: const Duration(seconds: 5),
+      );
+    }
   }
 
   /// 移除事件监听
@@ -1577,7 +1665,7 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
 
     switch (type) {
       case .playing:
-        if (progress - _heartDuration >= 5) {
+        if (progress - _heartDuration >= _heartBeatInterval) {
           _heartDuration = progress;
           return send();
         }
@@ -1645,6 +1733,12 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
     _playerCount = 0;
     if (removeSafeArea) {
       showSystemBar();
+    }
+    _lifecycleListener?.dispose();
+    _lifecycleListener = null;
+    _videoDisabledInBg = false;
+    if (_lowPowerRefreshRate) {
+      DisplayModeUtils.restore();
     }
     danmakuController = null;
     _stopOrientationListener();
@@ -1750,7 +1844,9 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
     SmartDialog.showToast('截图中');
     final image = await videoPlayerController?.screenshot();
     if (image == null) {
-      SmartDialog.showToast('截图失败');
+      SmartDialog.showToast(
+        lowPowerVo ? '截图失败，低功耗视频直出模式不支持截图' : '截图失败',
+      );
       return;
     }
 

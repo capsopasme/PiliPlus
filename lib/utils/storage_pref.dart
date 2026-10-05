@@ -827,14 +827,25 @@ abstract final class Pref {
       _setting.get(SettingBoxKey.bufferSec, defaultValue: 16.0);
 
   static Map<String, String> initBuffer([double playbackSpeed = 1.0]) {
-    final bufSec = Pref.bufferSec * playbackSpeed;
-    final bufSiz = (Pref.bufferSize * 0x100000).toStringAsFixed(0);
+    var bufSec = Pref.bufferSec * playbackSpeed;
+    var bufSiz = Pref.bufferSize * 0x100000;
+    final backSiz = bufSiz;
+    var hysteresis = bufSec / 1.5;
+    if (Platform.isAndroid && Pref.lowPowerNetwork) {
+      // 低功耗：一次缓冲一大段，剩余不足 1/4 时才继续下载，
+      // 让网络在两次下载之间长时间休眠，而不是每隔几秒唤醒一次
+      final lowPowerSec = 120.0 * playbackSpeed;
+      if (bufSec < lowPowerSec) bufSec = lowPowerSec;
+      const lowPowerSiz = 128.0 * 0x100000;
+      if (bufSiz < lowPowerSiz) bufSiz = lowPowerSiz;
+      hysteresis = bufSec / 4;
+    }
     return {
       'cache': 'yes',
       'cache-secs': bufSec.toStringAsFixed(3),
-      'demuxer-hysteresis-secs': (bufSec / 1.5).toStringAsFixed(3),
-      'demuxer-max-bytes': bufSiz,
-      'demuxer-max-back-bytes': bufSiz,
+      'demuxer-hysteresis-secs': hysteresis.toStringAsFixed(3),
+      'demuxer-max-bytes': bufSiz.toStringAsFixed(0),
+      'demuxer-max-back-bytes': backSiz.toStringAsFixed(0),
     };
   }
 
@@ -845,6 +856,22 @@ abstract final class Pref {
       'demuxer-max-back-bytes': '0',
     };
   }
+
+  /// 低功耗：mpv 使用 mediacodec_embed 直接输出画面（仅 Android）
+  static bool get lowPowerVo =>
+      _setting.get(SettingBoxKey.lowPowerVo, defaultValue: true);
+
+  /// 低功耗：后台/息屏时关闭视频轨（仅 Android）
+  static bool get lowPowerBgNoVideo =>
+      _setting.get(SettingBoxKey.lowPowerBgNoVideo, defaultValue: true);
+
+  /// 低功耗：播放页限制屏幕刷新率为 60Hz（仅 Android）
+  static bool get lowPowerRefreshRate =>
+      _setting.get(SettingBoxKey.lowPowerRefreshRate, defaultValue: true);
+
+  /// 低功耗：大块缓冲 + 降低播放进度上报频率（仅 Android）
+  static bool get lowPowerNetwork =>
+      _setting.get(SettingBoxKey.lowPowerNetwork, defaultValue: true);
 
   static String get audioOutput => _setting.get(
     SettingBoxKey.audioOutput,

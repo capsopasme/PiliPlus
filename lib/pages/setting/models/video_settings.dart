@@ -30,6 +30,40 @@ List<SettingsModel> get videoSettings => [
     setKey: SettingBoxKey.enableHA,
     defaultVal: true,
   ),
+  if (Platform.isAndroid) ...[
+    const SwitchModel(
+      title: '低功耗视频直出',
+      subtitle:
+          'MediaCodec 解码后直接输出画面（mpv 的 --vo=mediacodec_embed），省去每帧的 GPU 渲染。'
+          '需开启硬解，会忽略「硬解模式」；超分辨率与截图不可用。若出现黑屏请关闭，重新进入视频生效',
+      leading: Icon(Icons.electric_bolt),
+      setKey: SettingBoxKey.lowPowerVo,
+      defaultVal: true,
+    ),
+    const SwitchModel(
+      title: '后台/息屏仅解码音频',
+      subtitle: '退到后台或息屏时关闭视频轨，停止视频的下载与解码（画中画除外），回到前台自动恢复',
+      leading: Icon(Icons.headphones_outlined),
+      setKey: SettingBoxKey.lowPowerBgNoVideo,
+      defaultVal: true,
+    ),
+    const SwitchModel(
+      title: '播放时屏幕 60Hz',
+      subtitle: '播放页内将屏幕刷新率限制为 60Hz（弹幕动画随之降为 60 帧），退出播放页后恢复',
+      leading: Icon(Icons.autofps_select_outlined),
+      setKey: SettingBoxKey.lowPowerRefreshRate,
+      defaultVal: true,
+    ),
+    const SwitchModel(
+      title: '网络省电',
+      subtitle:
+          '缓冲时长不少于 120 秒（缓冲大小不少于 128MB），剩余 1/4 时再继续下载，让网络长时间休眠；'
+          '播放进度上报由每 5 秒改为每 30 秒（暂停、退出时仍立即上报）。会多预载一些流量',
+      leading: Icon(Icons.cloud),
+      setKey: SettingBoxKey.lowPowerNetwork,
+      defaultVal: true,
+    ),
+  ],
   const SwitchModel(
     title: '免登录1080P',
     subtitle: '免登录查看1080P视频',
