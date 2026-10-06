@@ -42,7 +42,9 @@ List<SettingsModel> get videoSettings => [
     ),
     const SwitchModel(
       title: '后台/息屏仅解码音频',
-      subtitle: '退到后台或息屏时关闭视频轨，停止视频的下载与解码（画中画除外），回到前台自动恢复',
+      subtitle:
+          '退到后台或息屏并持续播放 15 秒后关闭视频轨，停止视频的下载与解码（画中画除外），'
+          '回到前台自动恢复。短暂切出不触发，避免反复丢弃已缓冲的视频',
       leading: Icon(Icons.headphones_outlined),
       setKey: SettingBoxKey.lowPowerBgNoVideo,
       defaultVal: true,

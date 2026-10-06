@@ -473,6 +473,15 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
       Platform.isAndroid && Pref.lowPowerNetwork ? 30 : 5;
   AppLifecycleListener? _lifecycleListener;
 
+  /// 在后台持续播放多久后才关闭视频轨。
+  /// mpv 取消选中视频轨时会清掉已缓冲的视频数据，回到前台要重新下载并重建解码器，
+  /// 所以短暂切出（回消息、看通知）时不关，避免反复丢弃大缓冲。
+  static const _bgVideoOffDelay = Duration(seconds: 15);
+
+  /// App 处于后台（不可见且非小窗）
+  bool _inBackground = false;
+  Timer? _bgVideoOffTimer;
+
   /// 因进入后台而关闭了视频轨
   bool _videoDisabledInBg = false;
   static bool _embedFailToasted = false;
@@ -691,13 +700,42 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
 
   /// 后台/息屏时关闭视频轨：mpv 会同时停止视频流的下载与解码，只保留音频；
   /// 回到前台时恢复。小窗、直播、听视频模式下不处理。
+  ///
+  /// 进入后台后需持续播放 [_bgVideoOffDelay] 才关闭：暂停中不关（暂停时本来就不解码，
+  /// 关掉只会白白丢弃缓冲），在后台恢复播放时重新计时。
   void _onAppLifecycleStateChanged(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused) {
-      _disableVideoInBackground();
-    } else if (state == AppLifecycleState.inactive ||
-        state == AppLifecycleState.resumed) {
-      _restoreVideoInForeground();
+    switch (state) {
+      case AppLifecycleState.paused:
+        _inBackground = true;
+        _scheduleBgVideoOff();
+      case AppLifecycleState.inactive:
+      case AppLifecycleState.resumed:
+        _inBackground = false;
+        _cancelBgVideoOff();
+        _restoreVideoInForeground();
+      case AppLifecycleState.hidden:
+      case AppLifecycleState.detached:
+        break;
     }
+  }
+
+  void _scheduleBgVideoOff() {
+    if (!_inBackground || _videoDisabledInBg || _bgVideoOffTimer != null) {
+      return;
+    }
+    _bgVideoOffTimer = Timer(_bgVideoOffDelay, () {
+      _bgVideoOffTimer = null;
+      // 等待期间可能已暂停、回到前台或进入小窗（关闭小窗时 paused 可能早于
+      // 小窗状态更新到达），统一在这里按当前状态判断
+      if (_inBackground && playerStatus.isPlaying) {
+        _disableVideoInBackground();
+      }
+    });
+  }
+
+  void _cancelBgVideoOff() {
+    _bgVideoOffTimer?.cancel();
+    _bgVideoOffTimer = null;
   }
 
   void _disableVideoInBackground() {
@@ -925,10 +963,6 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
 
     _startListeners(player);
 
-    if (_lowPowerRefreshRate) {
-      DisplayModeUtils.limitForPlayback();
-    }
-
     return player;
   }
 
@@ -957,6 +991,11 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
         return;
       }
       _videoPlayerController = player;
+      // 必须在确认播放页仍在之后再限制刷新率：若在播放器创建期间页面已退出，
+      // dispose 中的 restore 已经执行过，此时再限制就没人恢复了
+      if (_lowPowerRefreshRate) {
+        DisplayModeUtils.limitForPlayback();
+      }
       if (isAnim && superResolutionType.value != .disable) {
         await setShader();
       }
@@ -1080,6 +1119,8 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
           _stopWakeLockTimer();
           _updatePlaybackState();
           WakelockPlus.enable();
+          // 在后台（如通知栏）恢复播放时，重新开始关闭视频轨的计时
+          if (_inBackground) _scheduleBgVideoOff();
 
           if (_isAutoEnterPip) {
             if (_isCurrVideoPage) {
@@ -1229,7 +1270,7 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
         text.contains('selected video_out')) {
       _embedFailToasted = true;
       SmartDialog.showToast(
-        '低功耗视频直出无法显示当前视频，请在 设置-视频 中关闭「低功耗视频直出」后重新进入',
+        '低功耗视频直出无法显示当前视频，请在 设置-音视频设置 中关闭「低功耗视频直出」后重新进入',
         displayTime: const Duration(seconds: 5),
       );
     }
@@ -1736,6 +1777,8 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
     }
     _lifecycleListener?.dispose();
     _lifecycleListener = null;
+    _cancelBgVideoOff();
+    _inBackground = false;
     _videoDisabledInBg = false;
     if (_lowPowerRefreshRate) {
       DisplayModeUtils.restore();
