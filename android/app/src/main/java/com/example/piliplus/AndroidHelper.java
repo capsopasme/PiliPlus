@@ -23,6 +23,7 @@ import android.graphics.Rect;
 import android.graphics.Typeface;
 import android.graphics.drawable.Icon;
 import android.graphics.fonts.Font;
+import android.graphics.fonts.SystemFonts;
 import android.graphics.text.PositionedGlyphs;
 import android.graphics.text.TextRunShaper;
 import android.media.session.PlaybackState;
@@ -44,6 +45,7 @@ import java.io.File;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.Locale;
 import java.util.Map;
 
@@ -330,6 +332,34 @@ public final class AndroidHelper {
                         continue;
                     }
                     result.add(scripts[i] + '|' + weight + '|' + font.getTtcIndex() + '|' + file.getAbsolutePath());
+                }
+            }
+            return result.toArray(new String[0]);
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    /**
+     * 系统字体中本进程读不到文件的那些（只返回文件名，去重），Android 10 以下返回 null。
+     * <p>
+     * 系统字体表由 system_server 下发，记录的是文件路径；应用进程按路径自己去读。
+     * KernelSU/Magisk 对某个应用「卸载模块」后，字体模块的文件在该应用的挂载命名空间里不存在，
+     * /system/etc/fonts.xml 也是原版，Flutter（以及本进程的原生排版）都用不上模块字体，
+     * 应用侧无法补救。这里只做诊断：列出这些看不到的文件，提示用户去关「卸载模块」。
+     * 只读路径元数据，不会触发字体加载。
+     */
+    @SuppressLint("NewApi")
+    public static String[] hiddenSystemFonts() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            return null;
+        }
+        try {
+            final LinkedHashSet<String> result = new LinkedHashSet<>();
+            for (Font font : SystemFonts.getAvailableFonts()) {
+                final File file = font.getFile();
+                if (file != null && !file.canRead()) {
+                    result.add(file.getName());
                 }
             }
             return result.toArray(new String[0]);

@@ -78,6 +78,9 @@ abstract final class FontUtils {
   static List<String>? _sysFontFamilyFallback;
   static final _loadedSysFonts = <String>{};
 
+  /// 系统排版实际用来显示中文（常规字重）的字体文件名，仅用于设置页展示
+  static String? systemCjkFontName;
+
   /// 「默认」字体对应的字体族；与 Flutter 自带的选择一致时为 null
   static String? get systemFontFamily => _sysFontFamily;
   static List<String>? get systemFontFamilyFallback => _sysFontFamilyFallback;
@@ -111,6 +114,11 @@ abstract final class FontUtils {
           if ((fonts[weight] ?? fonts[400]) case final font?) result.add(font);
         }
         return result.isEmpty ? null : result;
+      }
+
+      if ((sys.cjk[400] ?? (sys.cjk.isEmpty ? null : sys.cjk.values.first))
+          case final font?) {
+        systemCjkFontName = path.basename(font.path);
       }
 
       var latin = pick(sys.latin, weights);
@@ -158,6 +166,30 @@ abstract final class FontUtils {
       _sysFontFamilyFallback = loadCjk ? const [_sysCjkFamily] : null;
     } catch (e) {
       if (kDebugMode) debugPrint('syncSystemFont: $e');
+    }
+  }
+
+  /// 系统正在使用、但本应用读不到文件的字体文件名（Android 10+）。
+  ///
+  /// 非空说明字体模块对本应用没有挂载（KernelSU/Magisk「卸载模块」），
+  /// 这种情况下应用里拿不到字体数据，只能提示用户去 root 管理器里关掉。
+  static List<String>? hiddenSystemFonts() {
+    if (!Platform.isAndroid) return null;
+    try {
+      final array = AndroidHelper.hiddenSystemFonts();
+      if (array == null) return null;
+      try {
+        final length = array.length;
+        return [
+          for (var i = 0; i < length; i++)
+            ?array[i]?.toDartString(releaseOriginal: true),
+        ];
+      } finally {
+        array.release();
+      }
+    } catch (e) {
+      if (kDebugMode) debugPrint('hiddenSystemFonts: $e');
+      return null;
     }
   }
 

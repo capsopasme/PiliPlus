@@ -37,6 +37,9 @@ class _FontSettingPageState extends State<FontSettingPage> {
   final Map<String, Uint8List> _customFonts = {};
 
   late final List<String> _fonts;
+
+  /// 系统在用、本应用却读不到文件的字体（字体模块对本应用被「卸载」）
+  List<String>? _hiddenFonts;
   late ColorScheme colorScheme;
   late bool isPortrait;
   late ScrollController scrollController;
@@ -47,6 +50,9 @@ class _FontSettingPageState extends State<FontSettingPage> {
   void initState() {
     super.initState();
     _fonts = FontUtils.getFont().toList();
+    if (Platform.isAndroid) {
+      _hiddenFonts = FontUtils.hiddenSystemFonts();
+    }
     if (Platform.isAndroid && FontUtils.fontFamily != null) {
       // 当前用的是自选字体，启动时没有解析系统字体，这里补上以便预览「默认」
       FontUtils.syncSystemFont(force: true).whenComplete(() {
@@ -282,6 +288,7 @@ class _FontSettingPageState extends State<FontSettingPage> {
                               tileColor: _tileColor(null),
                               onTap: () => _onFontChanged(null),
                               title: const Text('默认（跟随系统）'),
+                              subtitle: _systemFontHint(),
                             ),
                           ),
                           if (FontUtils.isCustom)
@@ -398,6 +405,27 @@ class _FontSettingPageState extends State<FontSettingPage> {
         ),
       ),
     );
+  }
+
+  /// 「默认」下方的说明：字体模块对本应用没挂上时给出原因和解决办法，否则显示系统中文字体
+  Widget? _systemFontHint() {
+    if (_hiddenFonts case final hidden? when hidden.isNotEmpty) {
+      final names = hidden.take(2).join('、');
+      final more = hidden.length > 2 ? ' 等 ${hidden.length} 个' : ' ';
+      return Text(
+        '字体模块对本应用未生效：$names$more字体文件在 PiliPlus 中不可见。'
+        '通常是 root 管理器对本应用开启了「卸载模块」（KernelSU 对非 root 应用默认开启），'
+        '在其 App Profile 中为 PiliPlus 关闭后，强行停止并重新打开即可。',
+        style: TextStyle(fontSize: 12, color: colorScheme.error),
+      );
+    }
+    if (FontUtils.systemCjkFontName case final name?) {
+      return Text(
+        '系统中文字体：$name',
+        style: TextStyle(fontSize: 12, color: colorScheme.outline),
+      );
+    }
+    return null;
   }
 
   Widget _buildItem(Widget child) {
