@@ -344,6 +344,7 @@ class VideoDetailController extends GetxController
 
   void initFileSource(BiliDownloadEntryInfo entry) {
     this.entry = entry;
+    volume = entry.volume;
     _initLocalSkipIfNeeded();
     firstVideo = VideoItem(
       id: entry.preferedVideoQuality,

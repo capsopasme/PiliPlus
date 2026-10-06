@@ -364,7 +364,7 @@ class AudioController extends GetxController
     http_model.Volume? volume,
   }) async {
     await _initPlayerIfNeeded();
-    final extras = audioFilterExtras(volume);
+    final extras = audioNormalizationExtras(volume);
     player
       ?..setMediaHeader(
         userAgent: ua,

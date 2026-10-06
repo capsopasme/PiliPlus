@@ -88,7 +88,7 @@ class _DownloadPagePageState extends State<DownloadPagePage>
 
   void _loadList() {
     final list =
-        _controller.seasons
+        _controller.allSeasons
             .firstWhereOrNull((e) => e.seasonInfo == widget.seasonInfo)
             ?.pages
           ?..sort(_sort);

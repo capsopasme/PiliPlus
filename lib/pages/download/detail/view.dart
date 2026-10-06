@@ -81,7 +81,7 @@ class _DownloadDetailPageState extends State<DownloadDetailPage>
 
   void _loadList() {
     List<BiliDownloadEntryInfo>? list;
-    for (final season in _controller.seasons) {
+    for (final season in _controller.allSeasons) {
       for (final page in season.pages) {
         if (page.pageId == widget.pageId) {
           list = page.entries..sort(downloadEntrySort);

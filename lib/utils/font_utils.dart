@@ -1,5 +1,5 @@
 import 'dart:ffi';
-import 'dart:io' show File;
+import 'dart:io' show File, Platform;
 import 'dart:typed_data';
 import 'dart:ui' show loadFontFromList;
 
@@ -8,6 +8,7 @@ import 'package:PiliPlus/utils/fontconfig.g.dart';
 import 'package:PiliPlus/utils/path_utils.dart';
 import 'package:PiliPlus/utils/storage.dart';
 import 'package:PiliPlus/utils/storage_key.dart';
+import 'package:PiliPlus/utils/storage_pref.dart';
 import 'package:ffi/ffi.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart'
@@ -18,6 +19,9 @@ import 'package:path/path.dart' as path;
 import 'package:win32/win32.dart';
 
 typedef AppFont = ({String? fontFamily, bool isCustom});
+
+/// 系统字体文件及其在 ttc 中的序号
+typedef _SysFont = ({String path, int index});
 
 abstract final class FontUtils {
   static final _fonts = <String>{};
@@ -59,7 +63,194 @@ abstract final class FontUtils {
     if (isCustom) {
       return _readAndLoad();
     }
+    if (Platform.isAndroid && _appFont.fontFamily == null) {
+      return syncSystemFont();
+    }
     return null;
+  }
+
+  // ---------------- 跟随系统默认字体（Android） ----------------
+
+  static const _sysSansFamily = 'PiliSysSans';
+  static const _sysCjkFamily = 'PiliSysCJK';
+
+  static String? _sysFontFamily;
+  static List<String>? _sysFontFamilyFallback;
+  static final _loadedSysFonts = <String>{};
+
+  /// 「默认」字体对应的字体族；与 Flutter 自带的选择一致时为 null
+  static String? get systemFontFamily => _sysFontFamily;
+  static List<String>? get systemFontFamilyFallback => _sysFontFamilyFallback;
+
+  /// 主题使用的字体族：用户选了字体就用用户的，否则跟随系统默认字体
+  static String? get themeFontFamily => _appFont.fontFamily ?? _sysFontFamily;
+  static List<String>? get themeFontFamilyFallback =>
+      _appFont.fontFamily == null ? _sysFontFamilyFallback : null;
+
+  /// 让「默认」字体与系统实际使用的字体一致（Android 12+）。
+  ///
+  /// Flutter 自己解析 /system/etc/fonts.xml 选字体，而 Android 15 起系统改读
+  /// font_fallback.xml，字体模块/主题若只改了后者，Flutter 应用里就还是原来的字体。
+  /// 这里先问系统真正用来画默认文字的是哪个字体文件，与 fonts.xml 对比：
+  /// 一致时什么都不做（不多占内存），不一致才把系统用的字体文件加载进来。
+  /// 可重复调用（字重变化时只补加载缺少的文件）。
+  static Future<void> syncSystemFont({bool force = false}) async {
+    if (!Platform.isAndroid || (!force && _appFont.fontFamily != null)) {
+      return;
+    }
+    try {
+      final sys = _querySystemFonts();
+      if (sys == null) return;
+      final flutterFonts = await _readFontsXml();
+      if (flutterFonts == null) return;
+
+      final weights = {400, 700, (Pref.appFontWeight.index + 1) * 100};
+      Set<_SysFont>? pick(Map<int, _SysFont> fonts, Iterable<int> weights) {
+        final result = <_SysFont>{};
+        for (final weight in weights) {
+          if ((fonts[weight] ?? fonts[400]) case final font?) result.add(font);
+        }
+        return result.isEmpty ? null : result;
+      }
+
+      var latin = pick(sys.latin, weights);
+      var cjk = pick(sys.cjk, weights);
+
+      // 只加载常用字重，单个 CJK 字体动辄十几 MB，总量过大时只保留常规字重
+      int totalBytes(Set<_SysFont>? fonts) =>
+          fonts?.fold<int>(0, (sum, font) {
+            try {
+              return sum + File(font.path).lengthSync();
+            } catch (_) {
+              return sum;
+            }
+          }) ??
+          0;
+      if (totalBytes(latin) + totalBytes(cjk) > 80 * 0x100000) {
+        latin = pick(sys.latin, const [400]);
+        cjk = pick(sys.cjk, const [400]);
+      }
+
+      bool differs(Set<_SysFont>? fonts, Set<String>? used) =>
+          fonts != null &&
+          (used == null || fonts.any((font) => !used.contains(_fontKey(font))));
+      // loadFontFromList 只能加载 ttc 中的第 0 个字体
+      bool loadable(Set<_SysFont> fonts) =>
+          fonts.every((font) => font.index == 0);
+
+      final loadLatin =
+          differs(latin, flutterFonts.latin) &&
+          loadable(latin!) &&
+          await _loadSysFonts(latin, _sysSansFamily);
+      final loadCjk =
+          differs(cjk, flutterFonts.cjk) &&
+          loadable(cjk!) &&
+          // 西文字体本身就包含中文（整套替换的字体）时无需再单独加载
+          !(loadLatin && latin!.containsAll(cjk)) &&
+          await _loadSysFonts(cjk, _sysCjkFamily);
+
+      // 只换了中文字体时，西文仍用系统 sans-serif，中文回退到加载的字体
+      _sysFontFamily = loadLatin
+          ? _sysSansFamily
+          : loadCjk
+          ? 'sans-serif'
+          : null;
+      _sysFontFamilyFallback = loadCjk ? const [_sysCjkFamily] : null;
+    } catch (e) {
+      if (kDebugMode) debugPrint('syncSystemFont: $e');
+    }
+  }
+
+  static String _fontKey(_SysFont font) =>
+      '${path.basename(font.path)}#${font.index}';
+
+  static ({Map<int, _SysFont> latin, Map<int, _SysFont> cjk})?
+  _querySystemFonts() {
+    final array = AndroidHelper.systemDefaultFonts();
+    if (array == null) return null;
+    final latin = <int, _SysFont>{};
+    final cjk = <int, _SysFont>{};
+    try {
+      final length = array.length;
+      for (var i = 0; i < length; i++) {
+        final item = array[i]?.toDartString(releaseOriginal: true);
+        if (item == null) continue;
+        // script|weight|ttcIndex|path
+        final parts = item.split('|');
+        if (parts.length < 4) continue;
+        final weight = int.tryParse(parts[1]);
+        final index = int.tryParse(parts[2]);
+        if (weight == null || index == null) continue;
+        final font = (path: parts.sublist(3).join('|'), index: index);
+        (parts[0] == 'cjk' ? cjk : latin)[weight] = font;
+      }
+    } finally {
+      array.release();
+    }
+    if (latin.isEmpty && cjk.isEmpty) return null;
+    return (latin: latin, cjk: cjk);
+  }
+
+  /// Flutter（Skia）实际会用的字体：fonts.xml 中 sans-serif 族（默认族），
+  /// 以及第一个 lang 以 zh 开头的回退族（应用语言为 zh-CN）
+  static Future<({Set<String>? latin, Set<String>? cjk})?>
+  _readFontsXml() async {
+    String xml;
+    try {
+      xml = await File('/system/etc/fonts.xml').readAsString();
+    } catch (_) {
+      return null;
+    }
+    xml = xml.replaceAll(RegExp(r'<!--.*?-->', dotAll: true), '');
+    final familyRe = RegExp(r'<family\b([^>]*)>(.*?)</family>', dotAll: true);
+    final fontRe = RegExp(r'<font\b([^>]*)>\s*([^<\s]+)');
+    final indexRe = RegExp(r'\bindex\s*=\s*"(\d+)"');
+    final nameRe = RegExp(r'\bname\s*=\s*"([^"]*)"');
+    final langRe = RegExp(r'\blang\s*=\s*"([^"]*)"');
+    final langSplit = RegExp(r'[\s,]+');
+
+    Set<String>? latin;
+    Set<String>? cjk;
+    for (final family in familyRe.allMatches(xml)) {
+      final attrs = family.group(1)!;
+      Set<String> files() => {
+        for (final font in fontRe.allMatches(family.group(2)!))
+          '${path.basename(font.group(2)!)}'
+              '#${indexRe.firstMatch(font.group(1)!)?.group(1) ?? '0'}',
+      };
+      final name = nameRe.firstMatch(attrs)?.group(1);
+      if (name != null) {
+        if (latin == null && name == 'sans-serif') latin = files();
+      } else if (cjk == null) {
+        final lang = langRe.firstMatch(attrs)?.group(1);
+        if (lang != null &&
+            lang.split(langSplit).any((e) => e.startsWith('zh'))) {
+          cjk = files();
+        }
+      }
+      if (latin != null && cjk != null) break;
+    }
+    return (latin: latin, cjk: cjk);
+  }
+
+  static Future<bool> _loadSysFonts(Set<_SysFont> fonts, String family) async {
+    bool loaded = false;
+    for (final font in fonts) {
+      final id = '$family|${font.path}';
+      if (_loadedSysFonts.contains(id)) {
+        loaded = true;
+        continue;
+      }
+      try {
+        final bytes = await File(font.path).readAsBytes();
+        await loadFontFromList(bytes, fontFamily: family);
+        _loadedSysFonts.add(id);
+        loaded = true;
+      } catch (e) {
+        if (kDebugMode) debugPrint('load system font ${font.path}: $e');
+      }
+    }
+    return loaded;
   }
 
   @pragma('vm:notify-debugger-on-exception')

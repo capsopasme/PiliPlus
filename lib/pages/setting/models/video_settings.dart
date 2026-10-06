@@ -57,10 +57,12 @@ List<SettingsModel> get videoSettings => [
       defaultVal: true,
     ),
     const SwitchModel(
-      title: '网络省电',
+      title: '网络/读盘省电',
       subtitle:
-          '缓冲时长不少于 120 秒（缓冲大小不少于 128MB），剩余 1/4 时再继续下载，让网络长时间休眠；'
-          '播放进度上报由每 5 秒改为每 30 秒（暂停、退出时仍立即上报）。会多预载一些流量',
+          '在线：缓冲时长不少于 120 秒（缓冲大小不少于 128MB），剩余 1/4 时再继续下载，让网络长时间休眠，'
+          '播放进度上报由每 5 秒改为每 30 秒，会多预载一些流量；'
+          '离线缓存：一次读入约 120 秒再休眠（原为持续小块读盘），且不定时上报进度。'
+          '暂停、播完、退出时仍立即上报',
       leading: Icon(Icons.cloud),
       setKey: SettingBoxKey.lowPowerNetwork,
       defaultVal: true,
@@ -178,7 +180,8 @@ List<SettingsModel> get videoSettings => [
     NormalModel(
       title: '音频输出设备',
       leading: const Icon(Icons.speaker_outlined),
-      getSubtitle: () => '当前：${Pref.audioOutput}',
+      getSubtitle: () =>
+          '当前：${Pref.audioOutput}\n建议 AudioTrack 优先：跳转不爆音，且可走系统省电的 deep buffer 通路',
       onTap: _showAudioOutputDialog,
     ),
   NormalModel(

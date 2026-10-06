@@ -1,3 +1,5 @@
+import 'dart:io' show Platform;
+
 import 'package:PiliPlus/models_new/download/bili_download_entry_info.dart';
 import 'package:PiliPlus/models_new/download/download_info.dart';
 import 'package:PiliPlus/pages/common/multi_select/base.dart';
@@ -108,6 +110,10 @@ mixin BaseDownloadActionMixin<
     onUpdate(downloadService.updateSegments);
   }
 
+  void _onUpdateVolume() {
+    onUpdate(downloadService.updateVolume);
+  }
+
   void _showUpdateMenu(BuildContext context) {
     final renderBox = context.findRenderObject() as RenderBox;
     showMenu(
@@ -124,6 +130,11 @@ mixin BaseDownloadActionMixin<
           onTap: _onUpdateSeg,
           child: const Text('更新片段'),
         ),
+        if (Platform.isAndroid)
+          PopupMenuItem(
+            onTap: _onUpdateVolume,
+            child: const Text('更新响度信息（音量均衡）'),
+          ),
       ],
     );
   }

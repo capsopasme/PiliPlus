@@ -1,6 +1,6 @@
 import 'dart:async' show StreamSubscription, Timer;
 import 'dart:convert' show ascii, utf8;
-import 'dart:io' show Platform;
+import 'dart:io' show File, Platform;
 import 'dart:math' show max, min;
 import 'dart:ui' as ui;
 
@@ -478,6 +478,10 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
   /// 所以短暂切出（回消息、看通知）时不关，避免反复丢弃大缓冲。
   static const _bgVideoOffDelay = Duration(seconds: 15);
 
+  /// 离线缓存没有「重新下载」的代价，回前台只需从本地重读一小段，
+  /// 因此只留很短的防抖时间
+  static const _bgVideoOffDelayFile = Duration(seconds: 3);
+
   /// App 处于后台（不可见且非小窗）
   bool _inBackground = false;
   Timer? _bgVideoOffTimer;
@@ -723,14 +727,17 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
     if (!_inBackground || _videoDisabledInBg || _bgVideoOffTimer != null) {
       return;
     }
-    _bgVideoOffTimer = Timer(_bgVideoOffDelay, () {
-      _bgVideoOffTimer = null;
-      // 等待期间可能已暂停、回到前台或进入小窗（关闭小窗时 paused 可能早于
-      // 小窗状态更新到达），统一在这里按当前状态判断
-      if (_inBackground && playerStatus.isPlaying) {
-        _disableVideoInBackground();
-      }
-    });
+    _bgVideoOffTimer = Timer(
+      isFileSource ? _bgVideoOffDelayFile : _bgVideoOffDelay,
+      () {
+        _bgVideoOffTimer = null;
+        // 等待期间可能已暂停、回到前台或进入小窗（关闭小窗时 paused 可能早于
+        // 小窗状态更新到达），统一在这里按当前状态判断
+        if (_inBackground && playerStatus.isPlaying) {
+          _disableVideoInBackground();
+        }
+      },
+    );
   }
 
   void _cancelBgVideoOff() {
@@ -781,7 +788,9 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
   bool get processing => _processing;
 
   // offline
-  bool get isFileSource => dataSource is FileSource;
+  // 不直接读 late 的 dataSource：生命周期回调可能早于 setDataSource 触发
+  bool _isFileSource = false;
+  bool get isFileSource => _isFileSource;
 
   // 初始化资源
   Future<void> setDataSource(
@@ -816,6 +825,7 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
       this.width = width;
       this.height = height;
       this.dataSource = dataSource;
+      _isFileSource = dataSource is FileSource;
       _autoPlay = autoplay;
       // 初始化数据加载状态
       dataStatus.value = DataStatus.loading;
@@ -841,7 +851,7 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
         return;
       }
       // 配置Player 音轨、字幕等等
-      await _createVideoController(dataSource, seekTo, volume);
+      await _createVideoController(dataSource, seekTo, volume, duration);
 
       if (_playerCount == 0) {
         _removeListeners();
@@ -969,11 +979,48 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
   late final buffer = Pref.initBuffer(_playbackSpeed.value);
   late final liveBuffer = Pref.initLiveBuffer();
 
+  /// 离线缓存读取缓冲（仅 Android，跟随「网络省电」）：一次读入约 120 秒，
+  /// 剩余 1/4 时再读下一段，让存储和解封装线程在两次读取之间长时间休眠；
+  /// 原来是 cache=no，播放期间持续小块读盘。
+  late final bool _lowPowerFileRead = Platform.isAndroid && Pref.lowPowerNetwork;
+
+  static const _fileBufferMaxBytes = 64 * 0x100000;
+
+  Map<String, String> _fileBufferOptions(FileSource source, Duration? duration) {
+    if (!_lowPowerFileRead) return const {'cache': 'no'};
+    double secs = 120.0 * _playbackSpeed.value;
+    // 按文件平均码率估算 64MB 能缓冲多久：高码率（如 4K）时若秒数上限大于
+    // 字节上限能容纳的时长，hysteresis 永远达不到，就会退化成持续读盘
+    final totalSecs = (duration?.inMilliseconds ?? 0) / 1000;
+    if (totalSecs > 0) {
+      int bytes = 0;
+      try {
+        bytes += File(source.videoSource).lengthSync();
+        if (source.audioSource case final audio?) {
+          bytes += File(audio).lengthSync();
+        }
+      } catch (_) {}
+      if (bytes > 0) {
+        final fitSecs = _fileBufferMaxBytes * 0.8 / (bytes / totalSecs);
+        if (fitSecs < secs) secs = max(fitSecs, 8.0);
+      }
+    }
+    return {
+      'cache': 'yes',
+      'cache-secs': secs.toStringAsFixed(3),
+      'demuxer-hysteresis-secs': (secs / 4).toStringAsFixed(3),
+      'demuxer-max-bytes': '$_fileBufferMaxBytes',
+      // 本地文件向后跳转直接重读即可，不必保留已播放的数据
+      'demuxer-max-back-bytes': '0',
+    };
+  }
+
   // 配置播放器
   Future<void> _createVideoController(
     DataSource dataSource,
     Duration? seekTo,
     Volume? volume,
+    Duration? duration,
   ) async {
     isBuffering.value = false;
     _heartDuration = 0;
@@ -1003,7 +1050,7 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
 
     final Map<String, String> extras = {
       if (dataSource is FileSource)
-        'cache': 'no'
+        ..._fileBufferOptions(dataSource, duration)
       else if (isLive)
         ...liveBuffer
       else
@@ -1027,8 +1074,10 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
             // '!delay_open,media_type=audio;'
             '%${isFileSource ? utf8.encode(audio).length : audio.length}%$audio');
       }
-      audioFilterExtras(volume, map: extras);
     }
+
+    // 音量均衡：固定增益，对 DASH、MP4、离线单文件都生效
+    if (!isLive) audioNormalizationExtras(volume, map: extras);
 
     assert(!isLive || seekTo == null);
     await player.open(
@@ -1706,6 +1755,8 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
 
     switch (type) {
       case .playing:
+        // 离线播放不定时上报，暂停、播完、退出时仍会上报，历史记录不丢
+        if (_lowPowerFileRead && isFileSource) return null;
         if (progress - _heartDuration >= _heartBeatInterval) {
           _heartDuration = progress;
           return send();

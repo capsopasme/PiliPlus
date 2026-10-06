@@ -17,10 +17,14 @@ import android.content.pm.verify.domain.DomainVerificationManager;
 import android.content.pm.verify.domain.DomainVerificationUserState;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.graphics.Paint;
 import android.graphics.Point;
 import android.graphics.Rect;
 import android.graphics.Typeface;
 import android.graphics.drawable.Icon;
+import android.graphics.fonts.Font;
+import android.graphics.text.PositionedGlyphs;
+import android.graphics.text.TextRunShaper;
 import android.media.session.PlaybackState;
 import android.net.Uri;
 import android.os.Build;
@@ -36,9 +40,11 @@ import androidx.annotation.RequiresApi;
 
 import com.github.dart_lang.jni_flutter.JniFlutterPlugin;
 
+import java.io.File;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.Locale;
 import java.util.Map;
 
 @Keep
@@ -287,6 +293,49 @@ public final class AndroidHelper {
             return systemFontMap.keySet().toArray(new String[0]);
         }
         return null;
+    }
+
+    /**
+     * 系统实际用来绘制默认文字（Typeface.DEFAULT）的字体文件，Android 12 以下返回 null。
+     * <p>
+     * Flutter 自己解析 /system/etc/fonts.xml 选字体，而 Android 15 起系统改用 font_fallback.xml，
+     * 字体模块/主题若只改了后者，Flutter 应用就不会跟随系统字体。这里用系统自己的排版结果
+     * 找出真正使用的字体文件，交给 Dart 侧与 fonts.xml 比对、按需加载。
+     * <p>
+     * 每项格式为 "script|weight|ttcIndex|path"，script 为 latin（"a"）或 cjk（"中"，简体中文环境）。
+     */
+    @SuppressLint("NewApi")
+    public static String[] systemDefaultFonts() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+            return null;
+        }
+        try {
+            final String[] samples = {"a", "中"};
+            final String[] scripts = {"latin", "cjk"};
+            final ArrayList<String> result = new ArrayList<>();
+            final Paint paint = new Paint();
+            paint.setTextLocale(Locale.SIMPLIFIED_CHINESE);
+            for (int weight = 100; weight <= 900; weight += 100) {
+                paint.setTypeface(Typeface.create(Typeface.DEFAULT, weight, false));
+                for (int i = 0; i < samples.length; i++) {
+                    final String text = samples[i];
+                    final PositionedGlyphs glyphs = TextRunShaper.shapeTextRun(
+                            text, 0, text.length(), 0, text.length(), 0f, 0f, false, paint);
+                    if (glyphs.glyphCount() == 0) {
+                        continue;
+                    }
+                    final Font font = glyphs.getFont(0);
+                    final File file = font.getFile();
+                    if (file == null) {
+                        continue;
+                    }
+                    result.add(scripts[i] + '|' + weight + '|' + font.getTtcIndex() + '|' + file.getAbsolutePath());
+                }
+            }
+            return result.toArray(new String[0]);
+        } catch (Throwable ignored) {
+            return null;
+        }
     }
 
     public static void updateDocProvider(boolean enabled) {

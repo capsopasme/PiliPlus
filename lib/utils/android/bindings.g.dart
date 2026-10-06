@@ -698,6 +698,37 @@ extension type AndroidHelper._(jni$_.JObject _$this) implements jni$_.JObject {
     ).object<jni$_.JArray<jni$_.JString?>?>();
   }
 
+  static final _id_systemDefaultFonts = _class.staticMethodId(
+    r'systemDefaultFonts',
+    r'()[Ljava/lang/String;',
+  );
+
+  static final _systemDefaultFonts =
+      jni$_.ProtectedJniExtensions.lookup<
+            jni$_.NativeFunction<
+              jni$_.JniResult Function(
+                jni$_.Pointer<jni$_.Void>,
+                jni$_.JMethodIDPtr,
+              )
+            >
+          >('globalEnv_CallStaticObjectMethod')
+          .asFunction<
+            jni$_.JniResult Function(
+              jni$_.Pointer<jni$_.Void>,
+              jni$_.JMethodIDPtr,
+            )
+          >();
+
+  /// from: `static public java.lang.String[] systemDefaultFonts()`
+  /// The returned object must be released after use, by calling the [release] method.
+  static jni$_.JArray<jni$_.JString?>? systemDefaultFonts() {
+    final _$$classRef = _class.reference;
+    return _systemDefaultFonts(
+      _$$classRef.pointer,
+      _id_systemDefaultFonts.pointer,
+    ).object<jni$_.JArray<jni$_.JString?>?>();
+  }
+
   static final _id_updateDocProvider = _class.staticMethodId(
     r'updateDocProvider',
     r'(Z)V',

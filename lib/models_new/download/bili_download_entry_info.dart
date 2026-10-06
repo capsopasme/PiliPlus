@@ -1,4 +1,5 @@
 import 'package:PiliPlus/models/common/video/video_type.dart';
+import 'package:PiliPlus/models/video/play/url.dart' show Volume;
 import 'package:PiliPlus/models_new/download/download_info.dart';
 import 'package:PiliPlus/models_new/sponsor_block/segment_item.dart';
 import 'package:PiliPlus/pages/common/multi_select/base.dart'
@@ -44,6 +45,9 @@ class BiliDownloadEntryInfo with MultiSelectData {
   EpInfo? ep;
   List<SegmentItemModel>? segments;
   SeasonInfo? seasonInfo;
+
+  /// 响度测量值（音量均衡用），下载时或「更新响度信息」时获取
+  Volume? volume;
 
   late String pageDirPath;
   late String entryDirPath;
@@ -172,6 +176,7 @@ class BiliDownloadEntryInfo with MultiSelectData {
     this.ep,
     this.segments,
     this.seasonInfo,
+    this.volume,
   });
 
   factory BiliDownloadEntryInfo.fromJson(Map<String, dynamic> json) =>
@@ -214,6 +219,9 @@ class BiliDownloadEntryInfo with MultiSelectData {
         seasonInfo: json['season_info'] != null
             ? SeasonInfo.fromJson(json['season_info'] as Map<String, dynamic>)
             : null,
+        volume: json['pili_volume'] is Map<String, dynamic>
+            ? Volume.fromJson(json['pili_volume'] as Map<String, dynamic>)
+            : null,
       );
 
   Map<String, dynamic> toJson() => <String, dynamic>{
@@ -246,6 +254,7 @@ class BiliDownloadEntryInfo with MultiSelectData {
     'ep': ?ep?.toJson(),
     'segments': ?segments?.map((e) => e.toJson()).toList(),
     'season_info': ?seasonInfo?.toJson(),
+    'pili_volume': ?volume?.toJson(),
   };
 
   @override

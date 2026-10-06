@@ -47,6 +47,12 @@ class _FontSettingPageState extends State<FontSettingPage> {
   void initState() {
     super.initState();
     _fonts = FontUtils.getFont().toList();
+    if (Platform.isAndroid && FontUtils.fontFamily != null) {
+      // 当前用的是自选字体，启动时没有解析系统字体，这里补上以便预览「默认」
+      FontUtils.syncSystemFont(force: true).whenComplete(() {
+        if (mounted) setState(() {});
+      });
+    }
 
     if (_selectedFont != null && !_appFont.isCustom) {
       final index = _fonts.indexWhere((e) => e == _selectedFont);
@@ -85,6 +91,11 @@ class _FontSettingPageState extends State<FontSettingPage> {
       SettingBoxKey.appFontWeightV2: _selectedWeight,
       SettingBoxKey.defaultTextScale: _selectedScale,
     });
+
+    // 「默认」跟随系统字体：切回默认或调整字重时补加载对应的系统字体文件
+    if (_selectedFont == null) {
+      await FontUtils.syncSystemFont();
+    }
 
     Get
       ..back()
@@ -186,7 +197,11 @@ class _FontSettingPageState extends State<FontSettingPage> {
                       : "我能吞下玻璃而不伤身体"}\n\n'
                   '注：部分字体可能无法应用',
                   style: TextStyle(
-                    fontFamily: _selectedFont ?? '',
+                    fontFamily:
+                        _selectedFont ?? FontUtils.systemFontFamily ?? '',
+                    fontFamilyFallback: _selectedFont == null
+                        ? FontUtils.systemFontFamilyFallback
+                        : null,
                     fontWeight: .values[_selectedWeight],
                     fontSize: 14 * _selectedScale,
                   ),
@@ -220,7 +235,7 @@ class _FontSettingPageState extends State<FontSettingPage> {
                             child: Text(
                               _appFont.isCustom
                                   ? _selectedFont!.split('/').last
-                                  : _selectedFont ?? '默认',
+                                  : _selectedFont ?? '默认（跟随系统）',
                               style: TextStyle(
                                 fontSize: 15,
                                 fontFamily: _selectedFont ?? '',
@@ -266,7 +281,7 @@ class _FontSettingPageState extends State<FontSettingPage> {
                               minTileHeight: _tileHeight,
                               tileColor: _tileColor(null),
                               onTap: () => _onFontChanged(null),
-                              title: const Text('默认'),
+                              title: const Text('默认（跟随系统）'),
                             ),
                           ),
                           if (FontUtils.isCustom)

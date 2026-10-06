@@ -403,10 +403,6 @@ class Volume {
 
   // final MultiSceneArgs? multiSceneArgs;
 
-  // FFmpeg loudnorm 滤镜的标准有效范围（https://ffmpeg.org/ffmpeg-filters.html#loudnorm）
-  static const double minTpValue = -9.0;
-  static const double maxTpValue = 0.0;
-
   factory Volume.fromJson(Map<String, dynamic> json) {
     return Volume(
       measuredI: json["measured_i"] ?? 0,
@@ -420,25 +416,45 @@ class Volume {
     );
   }
 
-  String format(Map<String, num> config) {
-    final lra = max(config['lra'] ?? 11, measuredLra);
-    num i = config['i'] ?? targetI;
-    final tp = min(
-      config['tp'] ?? targetTp,
-      measuredTp,
-    ).clamp(minTpValue, maxTpValue);
-    final offset = config['offset'] ?? targetOffset;
-    num measuredI = this.measuredI;
-    if (measuredI > 0) {
-      i -= measuredI;
-      measuredI = 0;
-    }
-    num measuredThreshold = this.measuredThreshold;
-    if (measuredThreshold > 0) {
-      measuredThreshold = 0;
-    }
+  Map<String, dynamic> toJson() => <String, dynamic>{
+    'measured_i': measuredI,
+    'measured_lra': measuredLra,
+    'measured_tp': measuredTp,
+    'measured_threshold': measuredThreshold,
+    'target_offset': targetOffset,
+    'target_i': targetI,
+    'target_tp': targetTp,
+  };
 
-    return 'LRA=$lra:I=$i:TP=$tp:offset=$offset:linear=true:measured_I=$measuredI:measured_LRA=$measuredLra:measured_TP=$measuredTp:measured_thresh=$measuredThreshold';
+  /// 音量均衡的目标响度（LUFS），与常见流媒体平台的 -14 ~ -16 一致
+  static const double kTargetLoudness = -16;
+
+  /// 增益后允许的最高真峰值（dBTP），留 1dB 余量防止削波
+  static const double kMaxTruePeak = -1;
+
+  static const double kMinGain = -20;
+
+  /// 与 mpv 的 --volume-gain-max 默认值一致
+  static const double kMaxGain = 12;
+
+  /// 音量均衡的固定增益（dB），无有效测量值时为 null。
+  ///
+  /// 增益 = 目标响度 - 测得的整体响度，且不超过「真峰值余量」，
+  /// 这样提升音量也不会削波，不需要压限器；没有可信的真峰值时只衰减不提升。
+  double? get normalizationGain {
+    final i = measuredI.toDouble();
+    // 0（字段缺失时的默认值）或低于静音门限（-70）都不可信
+    if (!i.isFinite || i >= 0 || i <= -70) return null;
+    double gain = kTargetLoudness - i;
+    final tp = measuredTp.toDouble();
+    if (tp.isFinite && tp > -70 && tp < 10 && tp != 0) {
+      gain = min(gain, kMaxTruePeak - tp);
+    } else {
+      gain = min(gain, 0.0);
+    }
+    gain = max(kMinGain, min(kMaxGain, gain));
+    if (gain.abs() < 0.1) return null;
+    return gain;
   }
 
   bool get isNotEmpty =>

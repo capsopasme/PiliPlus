@@ -100,8 +100,10 @@ abstract final class SettingBoxKey {
       openInBrowser = 'openInBrowser',
       refreshDisplacement = 'refreshDisplacement',
       showHotRcmd = 'showHotRcmd',
-      audioNormalization = 'audioNormalization',
-      fallbackNormalization = 'fallbackNormalization',
+      // 旧版音量均衡（字符串：0 禁用 / 1 dynaudnorm / 2 loudnorm / 自定义参数），仅用于迁移
+      audioNormalizationLegacy = 'audioNormalization',
+      fallbackNormalizationLegacy = 'fallbackNormalization',
+      audioNormalization = 'audioNormalizationV2',
       superResolutionType = 'superResolutionType',
       preInitPlayer = 'preInitPlayer',
       mainTabBarView = 'mainTabBarView',

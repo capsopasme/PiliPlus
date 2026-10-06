@@ -33,7 +33,8 @@ abstract final class ThemeUtils {
     bool isDark = false,
   }) {
     final fontWeight = Pref.appFontWeight;
-    final fontFamily = FontUtils.fontFamily;
+    final fontFamily = FontUtils.themeFontFamily;
+    final fontFamilyFallback = FontUtils.themeFontFamilyFallback;
 
     TextTheme? textTheme;
     if (fontWeight != .normal) {
@@ -61,6 +62,7 @@ abstract final class ThemeUtils {
       useMaterial3: true,
       colorScheme: colorScheme,
       fontFamily: fontFamily,
+      fontFamilyFallback: fontFamilyFallback,
       textTheme: textTheme,
       appBarTheme: AppBarTheme(
         elevation: 0,
@@ -72,6 +74,7 @@ abstract final class ThemeUtils {
           fontSize: 16,
           fontWeight: fontWeight,
           fontFamily: fontFamily,
+          fontFamilyFallback: fontFamilyFallback,
           color: colorScheme.onSurface,
         ),
       ),
@@ -85,6 +88,7 @@ abstract final class ThemeUtils {
         backgroundColor: colorScheme.secondaryContainer,
         contentTextStyle: TextStyle(
           fontFamily: fontFamily,
+          fontFamilyFallback: fontFamilyFallback,
           fontWeight: fontWeight,
           color: colorScheme.onSecondaryContainer,
         ),
@@ -111,6 +115,7 @@ abstract final class ThemeUtils {
           fontSize: 18,
           fontWeight: fontWeight,
           fontFamily: fontFamily,
+          fontFamilyFallback: fontFamilyFallback,
           color: colorScheme.onSurface,
         ),
         backgroundColor: colorScheme.surface,
@@ -129,6 +134,7 @@ abstract final class ThemeUtils {
           fontSize: 14,
           color: Colors.white,
           fontFamily: fontFamily,
+          fontFamilyFallback: fontFamilyFallback,
           fontWeight: fontWeight,
         ),
         decoration: const BoxDecoration(

@@ -52,7 +52,7 @@ class LocalIntroController extends CommonIntroController {
     videoDetail.value.title = videoDetailCtr.args['title'];
     final controller = Get.find<DownloadController>();
     final list = <BiliDownloadEntryInfo>[];
-    for (final seaon in controller.seasons) {
+    for (final seaon in controller.allSeasons) {
       for (final page in seaon.pages) {
         final items = page.entries..sort(downloadEntrySort);
         final completed = items.where((e) => e.isCompleted);

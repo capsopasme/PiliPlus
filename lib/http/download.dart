@@ -1,3 +1,5 @@
+import 'dart:io' show Platform;
+
 import 'package:PiliPlus/http/loading_state.dart';
 import 'package:PiliPlus/http/video.dart';
 import 'package:PiliPlus/models/common/account_type.dart';
@@ -17,6 +19,35 @@ abstract final class DownloadHttp {
   static const String referer = "https://www.bilibili.com/";
   static const String userAgent = "Bilibili Freedoooooom/MarkII";
 
+  static VideoType _videoType(EpInfo? ep, bool isLogin) => switch (ep?.from) {
+    'pugv' => VideoType.pugv,
+    != null when isLogin => VideoType.pgc,
+    _ => VideoType.ugc,
+  };
+
+  /// 只取响度信息（音量均衡用）。请求成功返回 true，服务器没有该视频的
+  /// 响度数据时 volume 为 null。
+  static Future<({bool ok, Volume? volume})> getVolume(
+    BiliDownloadEntryInfo entry,
+  ) async {
+    final isLogin = Accounts.get(AccountType.video).isLogin;
+    final res = await VideoHttp.videoUrl(
+      avid: entry.avid,
+      bvid: entry.bvid,
+      cid: entry.cid,
+      seasonId: entry.seasonId,
+      epid: entry.ep?.episodeId,
+      qn: entry.preferedVideoQuality,
+      tryLook: !isLogin && Pref.p1080,
+      videoType: _videoType(entry.ep, isLogin),
+      voiceBalance: true,
+    );
+    if (res case Success(:final response)) {
+      return (ok: true, volume: response.volume);
+    }
+    return (ok: false, volume: null);
+  }
+
   static Future<BiliDownloadMediaInfo> getVideoUrl({
     required BiliDownloadEntryInfo entry,
     SourceInfo? source,
@@ -32,17 +63,19 @@ abstract final class DownloadHttp {
       epid: ep?.episodeId,
       qn: entry.preferedVideoQuality,
       tryLook: !isLogin && Pref.p1080,
-      videoType: switch (ep?.from) {
-        'pugv' => VideoType.pugv,
-        != null when isLogin => VideoType.pgc,
-        _ => VideoType.ugc,
-      },
+      videoType: _videoType(ep, isLogin),
+      // 顺带取响度信息，离线播放时也能音量均衡
+      voiceBalance: Platform.isAndroid && Pref.audioNormalization,
     );
     if (res case Success(:final response)) {
       final dash = response.dash;
 
       // segments
       entry.segments = response.clipInfoList;
+
+      if (response.volume case final volume?) {
+        entry.volume = volume;
+      }
 
       if (dash != null) {
         final targetVideoQa = response.findAvailableVideoQuality(

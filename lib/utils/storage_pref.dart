@@ -465,11 +465,18 @@ abstract final class Pref {
   static bool get showHotRcmd =>
       _setting.get(SettingBoxKey.showHotRcmd, defaultValue: false);
 
-  static String get audioNormalization =>
-      _setting.get(SettingBoxKey.audioNormalization, defaultValue: '0');
-
-  static String get fallbackNormalization =>
-      _setting.get(SettingBoxKey.fallbackNormalization, defaultValue: '0');
+  /// 音量均衡开关。旧版是多选项字符串，首次读取时迁移：非「禁用」即视为开启
+  static bool get audioNormalization {
+    final bool? val = _setting.get(SettingBoxKey.audioNormalization);
+    if (val != null) return val;
+    final legacy = _setting.get(SettingBoxKey.audioNormalizationLegacy);
+    final enabled = legacy is String && legacy.isNotEmpty && legacy != '0';
+    _setting
+      ..put(SettingBoxKey.audioNormalization, enabled)
+      ..delete(SettingBoxKey.audioNormalizationLegacy)
+      ..delete(SettingBoxKey.fallbackNormalizationLegacy);
+    return enabled;
+  }
 
   static SuperResolutionType get superResolutionType {
     SuperResolutionType? superResolutionType;
@@ -873,10 +880,13 @@ abstract final class Pref {
   static bool get lowPowerNetwork =>
       _setting.get(SettingBoxKey.lowPowerNetwork, defaultValue: true);
 
-  static String get audioOutput => _setting.get(
-    SettingBoxKey.audioOutput,
-    defaultValue: AudioOutput.defaultValue,
-  );
+  static String get audioOutput {
+    final String? val = _setting.get(SettingBoxKey.audioOutput);
+    if (val == null || val.isEmpty || val == AudioOutput.legacyDefaultValue) {
+      return AudioOutput.defaultValue;
+    }
+    return val;
+  }
 
   static bool get enableAi =>
       _setting.get(SettingBoxKey.enableAi, defaultValue: false);

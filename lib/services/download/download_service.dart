@@ -11,6 +11,7 @@ import 'package:PiliPlus/http/video.dart';
 import 'package:PiliPlus/models/common/video/video_quality.dart';
 import 'package:PiliPlus/models_new/download/bili_download_entry_info.dart';
 import 'package:PiliPlus/models_new/download/bili_download_media_file_info.dart';
+import 'package:PiliPlus/models_new/download/download_group.dart';
 import 'package:PiliPlus/models_new/pgc/pgc_info_model/episode.dart' as pgc;
 import 'package:PiliPlus/models_new/pgc/pgc_info_model/result.dart';
 import 'package:PiliPlus/models_new/video/video_detail/data.dart';
@@ -73,12 +74,102 @@ class DownloadService extends GetxService {
   Future<void> _readDownloadList() async {
     downloadList.clear();
     final downloadDir = Directory(await _getDownloadPath());
+    await _readGroups(downloadDir.path);
     await for (final dir in downloadDir.list()) {
       if (dir is Directory) {
         downloadList.addAll(await _readDownloadDirectory(dir));
       }
     }
     downloadList.sort((a, b) => b.timeUpdateStamp.compareTo(a.timeUpdateStamp));
+  }
+
+  // ---------------- 手动分组 ----------------
+
+  /// 分组文件放在下载目录里，与缓存一起保留（扫描缓存时只看子目录，不受影响）
+  static const _groupsFile = '.pili_download_groups.json';
+
+  final downloadGroups = <DownloadGroup>[];
+
+  Future<void> _readGroups(String downloadDir) async {
+    downloadGroups.clear();
+    try {
+      final file = File(path.join(downloadDir, _groupsFile));
+      if (!file.existsSync()) return;
+      final json = jsonDecode(await file.readAsString());
+      if (json is Map && json['groups'] is List) {
+        for (final item in json['groups'] as List) {
+          if (item is Map<String, dynamic>) {
+            downloadGroups.add(DownloadGroup.fromJson(item));
+          }
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) debugPrint('read download groups error: $e');
+    }
+  }
+
+  Future<void> _saveGroups() async {
+    try {
+      final file = File(path.join(await _getDownloadPath(), _groupsFile));
+      final tmp = File('${file.path}.tmp');
+      await tmp.writeAsString(
+        jsonEncode({
+          'version': 1,
+          'groups': [for (final group in downloadGroups) group.toJson()],
+        }),
+        flush: true,
+      );
+      await tmp.rename(file.path);
+    } catch (e) {
+      SmartDialog.showToast('保存分组失败: $e');
+    }
+  }
+
+  DownloadGroup? findGroup(String id) {
+    for (final group in downloadGroups) {
+      if (group.id == id) return group;
+    }
+    return null;
+  }
+
+  Future<DownloadGroup?> createGroup(String name) async {
+    name = name.trim();
+    if (name.isEmpty) return null;
+    final group = DownloadGroup(
+      id: DateTime.now().microsecondsSinceEpoch.toRadixString(36),
+      name: name,
+    );
+    downloadGroups.add(group);
+    await _saveGroups();
+    flagNotifier.refresh();
+    return group;
+  }
+
+  Future<void> renameGroup(DownloadGroup group, String name) async {
+    name = name.trim();
+    if (name.isEmpty || name == group.name) return;
+    group.name = name;
+    await _saveGroups();
+    flagNotifier.refresh();
+  }
+
+  /// 删除分组本身，组内视频回到「已缓存视频」列表
+  Future<void> removeGroup(DownloadGroup group) async {
+    downloadGroups.remove(group);
+    await _saveGroups();
+    flagNotifier.refresh();
+  }
+
+  /// 把条目移入 [target]（为 null 时移出所有分组）
+  Future<void> moveToGroup(Iterable<String> keys, DownloadGroup? target) async {
+    final keySet = keys.toSet();
+    if (keySet.isEmpty) return;
+    for (final group in downloadGroups) {
+      group.keys.removeWhere(keySet.contains);
+    }
+    target?.keys.addAll(keySet);
+    await _saveGroups();
+    flagNotifier.refresh();
   }
 
   @pragma('vm:notify-debugger-on-exception')
@@ -373,6 +464,17 @@ class DownloadService extends GetxService {
     } catch (_) {
       return false;
     }
+  }
+
+  /// 补全响度信息（音量均衡用）
+  Future<bool> updateVolume(BiliDownloadEntryInfo entry) async {
+    final res = await DownloadHttp.getVolume(entry);
+    if (!res.ok) return false;
+    if (res.volume case final volume?) {
+      entry.volume = volume;
+      await _updateBiliDownloadEntryJson(entry);
+    }
+    return true;
   }
 
   Future<bool> updateSegments(BiliDownloadEntryInfo entry) {

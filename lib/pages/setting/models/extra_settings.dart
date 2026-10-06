@@ -14,7 +14,6 @@ import 'package:PiliPlus/common/widgets/pendant_avatar.dart';
 import 'package:PiliPlus/grpc/reply.dart';
 import 'package:PiliPlus/http/fav.dart';
 import 'package:PiliPlus/http/loading_state.dart';
-import 'package:PiliPlus/models/common/audio_normalization.dart';
 import 'package:PiliPlus/models/common/dynamic/dynamics_type.dart';
 import 'package:PiliPlus/models/common/member/tab_type.dart';
 import 'package:PiliPlus/models/common/reply/reply_sort_type.dart';
@@ -279,25 +278,7 @@ List<SettingsModel> get extraSettings => [
     defaultVal: false,
     needReboot: true,
   ),
-  if (kDebugMode || Platform.isAndroid)
-    NormalModel(
-      title: '音量均衡',
-      leading: const Icon(Icons.multitrack_audio),
-      getSubtitle: () {
-        final audioNormalization = AudioNormalization.getTitleFromConfig(
-          Pref.audioNormalization,
-        );
-        String fallback = Pref.fallbackNormalization;
-        if (fallback == '0') {
-          fallback = '';
-        } else {
-          fallback =
-              '，无参数时:「${AudioNormalization.getTitleFromConfig(fallback)}」';
-        }
-        return '当前:「$audioNormalization」$fallback';
-      },
-      onTap: audioNormalization,
-    ),
+  if (kDebugMode || Platform.isAndroid) _audioNormalizationModel(),
   NormalModel(
     title: '超分辨率',
     leading: const Icon(Icons.stay_current_landscape_outlined),
@@ -642,97 +623,18 @@ List<SettingsModel> get extraSettings => [
   ),
 ];
 
-Future<void> audioNormalization(
-  BuildContext context,
-  VoidCallback setState, {
-  bool fallback = false,
-}) async {
-  final key = fallback
-      ? SettingBoxKey.fallbackNormalization
-      : SettingBoxKey.audioNormalization;
-  final res = await showDialog<String>(
-    context: context,
-    builder: (context) {
-      String audioNormalization = fallback
-          ? Pref.fallbackNormalization
-          : Pref.audioNormalization;
-      Set<String> values = {
-        '0',
-        '1',
-        if (!fallback) '2',
-        audioNormalization,
-        '3',
-      };
-      return SelectDialog<String>(
-        title: fallback ? '服务器无loudnorm配置时使用' : '音量均衡',
-        toggleable: true,
-        value: audioNormalization,
-        values: values
-            .map(
-              (e) => (
-                e,
-                switch (e) {
-                  '0' => AudioNormalization.disable.title,
-                  '1' => AudioNormalization.dynaudnorm.title,
-                  '2' => AudioNormalization.loudnorm.title,
-                  '3' => AudioNormalization.custom.title,
-                  _ => e,
-                },
-              ),
-            )
-            .toList(),
-      );
-    },
+SwitchModel _audioNormalizationModel() {
+  // 读取一次以完成旧设置（多选项字符串）到开关的迁移，保证开关显示正确
+  Pref.audioNormalization;
+  return const SwitchModel(
+    title: '音量均衡',
+    subtitle:
+        '按B站提供的响度测量值整体调整音量，让不同视频的音量接近；只做固定增益，不压缩动态、不额外耗电，跳转无副作用。'
+        '没有响度信息的视频不调整（离线缓存可在「更新」中补全）。重新进入视频生效',
+    leading: Icon(Icons.multitrack_audio),
+    setKey: SettingBoxKey.audioNormalization,
+    defaultVal: false,
   );
-  if (res != null && context.mounted) {
-    if (res == '3') {
-      String param = '';
-      await showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('自定义参数'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            spacing: 16,
-            children: [
-              const Text('等同于 --lavfi-complex="[aid1] 参数 [ao]"'),
-              TextField(
-                autofocus: true,
-                onChanged: (value) => param = value,
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: Get.back,
-              child: Text(
-                '取消',
-                style: TextStyle(color: ColorScheme.of(context).outline),
-              ),
-            ),
-            TextButton(
-              onPressed: () {
-                Get.back();
-                GStorage.setting.put(key, param);
-                if (!fallback &&
-                    AudioNormalization.loudnormRegExp.hasMatch(param)) {
-                  audioNormalization(context, setState, fallback: true);
-                }
-                setState();
-              },
-              child: const Text('确定'),
-            ),
-          ],
-        ),
-      );
-    } else {
-      GStorage.setting.put(key, res);
-      if (res == '2') {
-        audioNormalization(context, setState, fallback: true);
-      }
-      setState();
-    }
-  }
 }
 
 void _showDownPathDialog(BuildContext context, VoidCallback setState) {
