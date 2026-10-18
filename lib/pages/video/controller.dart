@@ -769,6 +769,10 @@ class VideoDetailController extends GetxController
 
     if (isClosed) return;
 
+    plPlayerController.onPlayUrlExpired = isFileSource
+        ? null
+        : refreshExpiredPlayUrl;
+
     if (plPlayerController.enableBlock) {
       initSkip();
     }
@@ -830,6 +834,7 @@ class VideoDetailController extends GetxController
   Future<void> queryVideoUrl({
     bool fromReset = false,
     bool autoFullScreenFlag = false,
+    bool silentFail = false,
   }) async {
     if (isFileSource) {
       return initPlayerIfNeeded(autoFullScreenFlag);
@@ -839,14 +844,36 @@ class VideoDetailController extends GetxController
     }
     isQuerying = true;
     try {
-      await _queryVideoUrl(fromReset, autoFullScreenFlag);
+      await _queryVideoUrl(fromReset, autoFullScreenFlag, silentFail);
     } finally {
       isQuerying = false;
     }
   }
 
+  /// 播放地址过期后重新获取并从当前位置续播，见 [PlPlayerController.onPlayUrlExpired]
+  Future<void> refreshExpiredPlayUrl() async {
+    if (isFileSource || isClosed || isQuerying) return;
+    final player = plPlayerController.videoPlayerController;
+    if (player == null) return;
+    // 播放器单例可能已被其他页面接管，只处理自己的视频
+    final source = plPlayerController.dataSource;
+    if (source is! NetworkSource || source.videoSource != videoUrl) return;
+
+    final wasPlaying = player.state.playing;
+    defaultST = player.state.position;
+    _autoPlay.value = true;
+    await queryVideoUrl(fromReset: true, silentFail: true);
+    if (!wasPlaying && !isClosed) {
+      plPlayerController.pause();
+    }
+  }
+
   @pragma('vm:prefer-inline')
-  Future<void> _queryVideoUrl(bool fromReset, bool autoFullScreenFlag) async {
+  Future<void> _queryVideoUrl(
+    bool fromReset,
+    bool autoFullScreenFlag, [
+    bool silentFail = false,
+  ]) async {
     if (plPlayerController.enableSponsorBlock && isBlock && !fromReset) {
       querySponsorBlock(bvid: bvid, cid: cid.value);
     }
@@ -992,6 +1019,10 @@ class VideoDetailController extends GetxController
         audioUrl = '';
       }
       await initPlayerIfNeeded(autoFullScreenFlag);
+    } else if (silentFail) {
+      // 地址过期后的后台刷新失败（多为断网）：保持播放器现状，稍后再试，
+      // 不能像首次加载失败那样关掉播放器、退出全屏
+      defaultST = null;
     } else {
       _autoPlay.value = false;
       videoState.value = false;
@@ -1252,6 +1283,9 @@ class VideoDetailController extends GetxController
 
   @override
   void onClose() {
+    if (plPlayerController.onPlayUrlExpired == refreshExpiredPlayUrl) {
+      plPlayerController.onPlayUrlExpired = null;
+    }
     cid.close();
     if (isFileSource) {
       cacheLocalProgress();

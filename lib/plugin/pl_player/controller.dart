@@ -1090,6 +1090,53 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
     );
   }
 
+  /// B站播放地址带 deadline 参数（约 2 小时有效）。过期后 CDN 只返回几百字节的
+  /// 错误页，mpv 会拿同一个地址每隔约 3 秒无限重试（日志里成串的
+  /// `Seek failed (to x, size 146)`），播放永久卡住且一直耗电；refreshPlayer
+  /// 重开的也是同一个过期地址，救不回来。由播放页注册：重新请求播放地址并从
+  /// 当前位置续播。
+  Future<void> Function()? onPlayUrlExpired;
+  DateTime? _lastPlayUrlRefresh;
+  static final _deadlineRegExp = RegExp(r'[?&]deadline=(\d+)');
+  static final _seekFailedRegExp = RegExp(
+    r'^Seek failed \(to \d+, size (\d+)\)',
+  );
+
+  bool _isPlayUrlExpired(String event) {
+    // 服务器返回的是错误页而不是媒体数据
+    if (_seekFailedRegExp.firstMatch(event) case final m?) {
+      if (int.parse(m.group(1)!) < 4096) return true;
+    }
+    if (event.contains('HTTP error 403') || event.contains('403 Forbidden')) {
+      return true;
+    }
+    final nowSecs = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    for (final url in [dataSource.videoSource, dataSource.audioSource]) {
+      if (url == null) continue;
+      if (_deadlineRegExp.firstMatch(url) case final m?) {
+        // 留 60 秒余量，兼顾本机时钟误差
+        if (nowSecs >= int.parse(m.group(1)!) - 60) return true;
+      }
+    }
+    return false;
+  }
+
+  /// 返回 true 表示该错误已按「地址过期」处理
+  bool _handlePlayUrlExpired(String event) {
+    final callback = onPlayUrlExpired;
+    if (callback == null || !_isPlayUrlExpired(event)) return false;
+    final now = DateTime.now();
+    // mpv 会连续报很多条，刷新进行中或刚刷新过就吞掉；
+    // 若刷新失败（如断网），30 秒后下一条错误会再试一次
+    if (_lastPlayUrlRefresh case final last?
+        when now.difference(last) < const Duration(seconds: 30)) {
+      return true;
+    }
+    _lastPlayUrlRefresh = now;
+    callback();
+    return true;
+  }
+
   Future<void>? refreshPlayer() {
     if (dataSource is FileSource) {
       return null;
@@ -1264,6 +1311,9 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
               event.startsWith("Can not open external file https://")) {
             Timer(const Duration(milliseconds: 3000), refreshPlayer);
           }
+          return;
+        }
+        if (dataSource is NetworkSource && _handlePlayUrlExpired(event)) {
           return;
         }
         if (event.startsWith("Failed to open https://") ||
