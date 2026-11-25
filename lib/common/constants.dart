@@ -23,6 +23,11 @@ abstract final class Constants {
   static const String userAgentApp =
       'Mozilla/5.0 BiliDroid/8.43.0 (bbcallen@gmail.com) os/android model/android mobi_app/android build/8430300 channel/master innerVer/8430300 osVer/15 network/2';
 
+  // 国际版 3.16.0 (com.bilibili.app.in, versionCode 7082100)
+  static const int buildAppIntl = 7082100;
+  static const String userAgentAppIntl =
+      'Mozilla/5.0 BiliDroid/3.16.0 (bbcallen@gmail.com) os/android model/2211133C mobi_app/android_i build/7082100 channel/master innerVer/7082100 osVer/15 network/2';
+
   static const String statisticsApp =
       '{"appId":1,"platform":3,"version":"8.43.0","abtest":""}';
 

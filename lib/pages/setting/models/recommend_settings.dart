@@ -16,6 +16,14 @@ List<SettingsModel> get recommendSettings => [
     defaultVal: true,
     needReboot: true,
   ),
+  const SwitchModel(
+    title: 'app端推荐模拟国际版客户端',
+    subtitle: '推荐请求使用国际版 3.16.0 的客户端身份（build/UA/app-key），使推荐更接近官方国际版',
+    leading: Icon(Icons.public_outlined),
+    setKey: SettingBoxKey.appRcmdIntl,
+    defaultVal: true,
+    needReboot: true,
+  ),
   SwitchModel(
     title: '保留首页推荐刷新',
     subtitle: '下拉刷新时保留上次内容',

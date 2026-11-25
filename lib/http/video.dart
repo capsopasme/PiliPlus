@@ -110,12 +110,15 @@ abstract final class VideoHttp {
     return false;
   }
 
+  static final bool _rcmdIntl = Pref.appRcmdIntl;
+
   // 添加额外的loginState变量模拟未登录状态
   static Future<LoadingState<List<RcmdVideoItemAppModel>>> rcmdVideoListApp({
     required int freshIdx,
   }) async {
+    final intl = _rcmdIntl;
     final params = {
-      'build': 8430300,
+      'build': intl ? Constants.buildAppIntl : 8430300,
       'c_locale': 'zh_CN',
       'channel': 'master',
       'column': 2,
@@ -140,21 +143,25 @@ abstract final class VideoHttp {
       'recsys_mode': 0,
       's_locale': 'zh_CN',
       'splash_id': '',
-      'statistics': Constants.statisticsApp,
+      // 国际版的 statistics appId 未知，模拟国际版时不发送，避免与身份矛盾
+      if (!intl) 'statistics': Constants.statisticsApp,
       'voice_balance': 0,
     };
     final res = await Request().get(
       Api.recommendListApp,
       queryParameters: params,
       options: Options(
+        extra: {if (intl) keepAppKeyHeader: true},
         headers: {
           'buvid': LoginHttp.buvid,
           'fp_local': '1111111111111111111111111111111111111111111111111111111111111111',
           'fp_remote': '1111111111111111111111111111111111111111111111111111111111111111',
           'session_id': '11111111',
           'env': 'prod',
-          'app-key': 'android_hd',
-          'User-Agent': Constants.userAgent,
+          'app-key': intl ? 'android_i' : 'android_hd',
+          'User-Agent': intl
+              ? Constants.userAgentAppIntl
+              : Constants.userAgent,
           'x-bili-trace-id': Constants.traceId,
           'x-bili-aurora-eid': '',
           'x-bili-aurora-zone': '',

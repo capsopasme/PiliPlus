@@ -15,3 +15,7 @@ abstract final class HttpString {
 
   static const String sponsorBlockBaseUrl = 'https://www.bsbsb.top';
 }
+
+/// Request `extra` flag: keep the request's own `app-key` header instead of
+/// the account's default one.
+const String keepAppKeyHeader = 'keepAppKeyHeader';

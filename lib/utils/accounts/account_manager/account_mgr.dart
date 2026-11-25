@@ -62,9 +62,13 @@ class AccountManager extends Interceptor {
       return handler.next(options);
     }
 
+    final keptAppKey = options.extra[keepAppKeyHeader] == true
+        ? options.headers['app-key']
+        : null;
     options.headers
       ..addAll(account.headers)
       ..['referer'] ??= HttpString.baseUrl;
+    if (keptAppKey != null) options.headers['app-key'] = keptAppKey;
 
     // app端不需要管理cookie
     if (isApp) {
