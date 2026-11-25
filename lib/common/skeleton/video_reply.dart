@@ -1,7 +1,7 @@
 import 'package:PiliPlus/pages/video/reply/widgets/reply_style.dart';
 import 'package:material_ui/material_ui.dart';
 
-/// 评论加载占位：与评论卡片同样的 iOS 风格卡片 + 静态灰块
+/// 评论加载占位：与一级评论同样的布局 + 静态灰块 + 底部细线
 class VideoReplySkeleton extends StatelessWidget {
   const VideoReplySkeleton({super.key});
 
@@ -19,15 +19,17 @@ class VideoReplySkeleton extends StatelessWidget {
         ),
       ),
     );
-    return Padding(
-      padding: ReplyStyle.cardMargin,
-      child: DecoratedBox(
-        decoration: ShapeDecoration(
-          color: palette.card,
-          shape: ReplyStyle.cardShape,
-        ),
-        child: Padding(
-          padding: ReplyStyle.cardPadding,
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+            ReplyStyle.rootPadding,
+            12,
+            ReplyStyle.rootPadding,
+            12,
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -70,7 +72,8 @@ class VideoReplySkeleton extends StatelessWidget {
             ],
           ),
         ),
-      ),
+        ReplyDivider(color: palette.divider),
+      ],
     );
   }
 }

@@ -51,13 +51,26 @@ class _VideoReplyPanelState extends State<VideoReplyPanel>
     if (_videoReplyController.loadingState.value is Loading) {
       _videoReplyController.queryData();
     }
+    ReplyPalette.backgroundType.addListener(_onBackgroundChanged);
+  }
+
+  @override
+  void dispose() {
+    ReplyPalette.backgroundType.removeListener(_onBackgroundChanged);
+    super.dispose();
+  }
+
+  /// 设置里切换评论区背景后立即生效
+  void _onBackgroundChanged() {
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     colorScheme = ColorScheme.of(context);
-    palette = ReplyPalette.of(context);
     bottom = MediaQuery.viewPaddingOf(context).bottom;
   }
 
@@ -66,10 +79,10 @@ class _VideoReplyPanelState extends State<VideoReplyPanel>
   @override
   Widget build(BuildContext context) {
     super.build(context);
+    palette = ReplyPalette.of(context);
     final secondaryLabel = palette.secondaryLabel;
     // 不再提供「发表评论」悬浮按钮（只读）
-    return ColoredBox(
-      color: palette.background,
+    return ReplyBackground(
       child: refreshIndicator(
         onRefresh: _videoReplyController.onRefresh,
         isClampingScrollPhysics: widget.isNested,
@@ -82,7 +95,7 @@ class _VideoReplyPanelState extends State<VideoReplyPanel>
           slivers: [
             SliverFloatingHeaderWidget(
               // 半透明悬浮排序栏：只是带 alpha 的纯色，不做实时模糊
-              backgroundColor: palette.background.withValues(alpha: 0.92),
+              backgroundColor: palette.headerBackground,
               child: Padding(
                 padding: const .fromLTRB(16, 4, 8, 4),
                 child: Obx(() {
@@ -93,7 +106,7 @@ class _VideoReplyPanelState extends State<VideoReplyPanel>
                       Text(
                         sortType.desc,
                         style: ReplyStyle.action.copyWith(
-                          fontSize: 13,
+                          fontSize: 12.5,
                           color: secondaryLabel,
                         ),
                       ),
@@ -102,14 +115,14 @@ class _VideoReplyPanelState extends State<VideoReplyPanel>
                         onPressed: _videoReplyController.queryBySort,
                         icon: Icon(
                           Icons.swap_vert_rounded,
-                          size: 16,
-                          color: colorScheme.primary,
+                          size: 15,
+                          color: palette.link,
                         ),
                         label: Text(
                           sortType.descShort,
                           style: ReplyStyle.action.copyWith(
-                            fontSize: 13,
-                            color: colorScheme.primary,
+                            fontSize: 12.5,
+                            color: palette.link,
                           ),
                         ),
                       ),

@@ -49,6 +49,7 @@ import 'package:PiliPlus/utils/platform_utils.dart';
 import 'package:PiliPlus/utils/storage.dart';
 import 'package:PiliPlus/utils/storage_key.dart';
 import 'package:PiliPlus/utils/storage_pref.dart';
+import 'package:PiliPlus/utils/window_utils.dart';
 import 'package:PiliPlus/utils/utils.dart';
 import 'package:archive/archive.dart' show getCrc32;
 import 'package:canvas_danmaku/canvas_danmaku.dart';
@@ -1044,10 +1045,15 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
         return;
       }
       _videoPlayerController = player;
-      // 必须在确认播放页仍在之后再限制刷新率：若在播放器创建期间页面已退出，
-      // dispose 中的 restore 已经执行过，此时再限制就没人恢复了
-      if (_lowPowerRefreshRate) {
-        DisplayModeUtils.limitForPlayback();
+      // 必须在确认播放页仍在之后再设置：若在播放器创建期间页面已退出，
+      // dispose 中的恢复已经执行过，此时再设置就没人恢复了
+      if (Platform.isAndroid) {
+        // 旋转/全屏切换时 Flutter 画面重绘前露出的是窗口底色，浅色主题下为白色，
+        // 播放页期间改为黑色，避免切换瞬间闪白边
+        WindowUtils.setVideoBackground(true);
+      }
+      if (_lowPowerRefreshRate && isFullScreen.value) {
+        _scheduleRefreshRateLimit();
       }
       if (isAnim && superResolutionType.value != .disable) {
         await setShader();
@@ -1677,6 +1683,29 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
   void _setFullScreen(bool val) {
     isFullScreen.value = val;
     updateSubtitleStyle();
+    if (_lowPowerRefreshRate) {
+      if (val) {
+        _scheduleRefreshRateLimit();
+      } else {
+        _refreshRateTimer?.cancel();
+        _refreshRateTimer = null;
+        DisplayModeUtils.restore();
+      }
+    }
+  }
+
+  Timer? _refreshRateTimer;
+
+  /// 只在全屏时把屏幕限制为 60Hz：竖屏浏览评论/简介时保持高刷。
+  /// 等旋转动画结束后再切换显示模式，避免与旋转叠在一起引起闪烁。
+  void _scheduleRefreshRateLimit() {
+    _refreshRateTimer?.cancel();
+    _refreshRateTimer = Timer(const Duration(milliseconds: 800), () {
+      _refreshRateTimer = null;
+      if (isFullScreen.value && _videoPlayerController != null) {
+        DisplayModeUtils.limitForPlayback();
+      }
+    });
   }
 
   double screenRatio = 0.0;
@@ -1887,8 +1916,13 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
     _cancelBgVideoOff();
     _inBackground = false;
     _videoDisabledInBg = false;
+    _refreshRateTimer?.cancel();
+    _refreshRateTimer = null;
     if (_lowPowerRefreshRate) {
       DisplayModeUtils.restore();
+    }
+    if (Platform.isAndroid) {
+      WindowUtils.setVideoBackground(false);
     }
     danmakuController = null;
     _stopOrientationListener();

@@ -50,8 +50,10 @@ List<SettingsModel> get videoSettings => [
       defaultVal: true,
     ),
     const SwitchModel(
-      title: '播放时屏幕 60Hz',
-      subtitle: '播放页内将屏幕刷新率限制为 60Hz（弹幕动画随之降为 60 帧），退出播放页后恢复',
+      title: '全屏播放时屏幕 60Hz',
+      subtitle:
+          '进入全屏后将屏幕刷新率限制为 60Hz（弹幕动画随之降为 60 帧），退出全屏或播放页后恢复；'
+          '竖屏浏览评论、简介时保持系统刷新率',
       leading: Icon(Icons.autofps_select_outlined),
       setKey: SettingBoxKey.lowPowerRefreshRate,
       defaultVal: true,

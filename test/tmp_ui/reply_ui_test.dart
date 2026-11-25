@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:PiliPlus/common/skeleton/video_reply.dart';
 import 'package:PiliPlus/grpc/bilibili/main/community/reply/v1.pb.dart';
 import 'package:PiliPlus/pages/video/reply/widgets/reply_item_grpc.dart';
+import 'package:PiliPlus/pages/video/reply/widgets/reply_style.dart';
 import 'package:PiliPlus/pages/video/reply/widgets/reply_thread.dart';
 import 'package:PiliPlus/utils/storage.dart';
 import 'package:fixnum/fixnum.dart';
@@ -18,13 +19,14 @@ ReplyInfo _reply(
   int count = 0,
   int like = 0,
   bool liked = false,
+  int root = 0,
 }) => ReplyInfo(
   id: Int64(id),
   oid: Int64(100),
   type: Int64(1),
   mid: Int64(id + 1000),
-  root: Int64(1),
-  parent: Int64(1),
+  root: Int64(root),
+  parent: Int64(root),
   dialog: Int64(id),
   like: Int64(like),
   ctime: Int64(1700000000),
@@ -80,8 +82,15 @@ void main() {
       like: 12345,
       liked: true,
       replies: [
-        _reply(2, 'Bob', '回复 @Alice :你好', like: 3),
-        _reply(3, 'Carol with a very very very long nickname here', '第二行\n换行'),
+        _reply(2, 'Bob', '回复 @Alice :你好', like: 3, root: 1),
+        _reply(
+          3,
+          'Carol with a very very very long nickname here',
+          '第二行\n换行',
+          root: 1,
+        ),
+        _reply(12, 'Dan', 'third', root: 1),
+        _reply(13, 'Erin', 'fourth (hidden by default)', root: 1),
       ],
     );
     await tester.pumpWidget(
@@ -104,7 +113,10 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(find.text('Alice'), findsOneWidget);
     expect(find.text('Bob'), findsOneWidget);
-    expect(find.textContaining('展开 10 条回复'), findsOneWidget);
+    expect(find.text('Dan'), findsOneWidget);
+    // 默认只显示前 3 条
+    expect(find.text('Erin'), findsNothing);
+    expect(find.textContaining('展开 9 条回复'), findsOneWidget);
 
     // 点头部（时间·属地行）整串折叠
     await tester.tap(find.textContaining('IP属地').first);
@@ -116,27 +128,34 @@ void main() {
     await tester.tap(find.text('12 条回复'));
     await tester.pumpAndSettle();
     expect(find.text('Bob'), findsOneWidget);
-    expect(find.textContaining('展开 10 条回复'), findsOneWidget);
+    expect(find.textContaining('展开 9 条回复'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('level 0 / 2 / 3, skeleton, dark', (tester) async {
-    for (final brightness in Brightness.values) {
+  testWidgets('level 0 / 2 / 3, skeleton, dark, both backgrounds', (
+    tester,
+  ) async {
+    for (final (brightness, bg) in [
+      for (final b in Brightness.values)
+        for (final t in ReplyBackgroundType.values) (b, t),
+    ]) {
+      ReplyPalette.backgroundType.value = bg;
       await tester.pumpWidget(
         host([
+          const ReplyBackground(child: SizedBox(height: 40)),
           const VideoReplySkeleton(),
           ReplyItemGrpc(
-            replyItem: _reply(4, 'Dave', 'level two'),
+            replyItem: _reply(4, 'Dave', 'level two root (panel header)'),
             replyLevel: 2,
             needDivider: false,
           ),
           ReplyItemGrpc(
-            replyItem: _reply(5, 'Eve', 'level two with dialog'),
+            replyItem: _reply(5, 'Eve', 'level two with dialog', root: 4),
             replyLevel: 2,
             showDialogue: () {},
           ),
           ReplyItemGrpc(
-            replyItem: _reply(6, 'Frank', 'level three'),
+            replyItem: _reply(6, 'Frank', 'level three', root: 4),
             replyLevel: 3,
           ),
           ReplyItemGrpc(
@@ -145,7 +164,7 @@ void main() {
               'Grace',
               'flat',
               count: 3,
-              replies: [_reply(8, 'Heidi', 'x')],
+              replies: [_reply(8, 'Heidi', 'x', root: 7)],
             ),
             replyLevel: 0,
             needDivider: false,
@@ -156,7 +175,7 @@ void main() {
               'NoStore',
               'level one without store',
               count: 5,
-              replies: [_reply(11, 'Ivan', 'y')],
+              replies: [_reply(11, 'Ivan', 'y', root: 10)],
             ),
             replyLevel: 1,
           ),
