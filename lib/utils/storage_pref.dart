@@ -561,9 +561,6 @@ abstract final class Pref {
     defaultValue: true,
   );
 
-  static bool get enableSlideFS =>
-      _setting.get(SettingBoxKey.enableSlideFS, defaultValue: true);
-
   static int get retryCount =>
       _setting.get(SettingBoxKey.retryCount, defaultValue: 2);
 
@@ -780,9 +777,6 @@ abstract final class Pref {
 
   static bool get enableQuickDouble =>
       _setting.get(SettingBoxKey.enableQuickDouble, defaultValue: true);
-
-  static bool get fullScreenGestureReverse =>
-      _setting.get(SettingBoxKey.fullScreenGestureReverse, defaultValue: false);
 
   static bool get autoPiP =>
       _setting.get(SettingBoxKey.autoPiP, defaultValue: false);

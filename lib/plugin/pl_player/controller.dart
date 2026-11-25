@@ -429,7 +429,6 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
   late final enableShrinkVideoSize = Pref.enableShrinkVideoSize;
   late final darkVideoPage = Pref.darkVideoPage;
   late final enableSlideVolumeBrightness = Pref.enableSlideVolumeBrightness;
-  late final enableSlideFS = Pref.enableSlideFS;
   late final enableDragSubtitle = Pref.enableDragSubtitle;
   late final fastForBackwardDuration = Duration(
     seconds: Pref.fastForBackwardDuration,
@@ -443,7 +442,15 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
   late final reverseFromFirst = Pref.reverseFromFirst;
   late final horizontalPreview = Pref.horizontalPreview;
   late final showDmChart = Pref.showDmChart;
-  late final showViewPoints = Pref.showViewPoints;
+  /// 显示视频分段信息（进度条分段 + 底栏分段按钮），可在视频页「更多设置」里实时切换
+  late final RxBool showViewPoints = Pref.showViewPoints.obs;
+
+  void setShowViewPoints(bool value) {
+    showViewPoints.value = value;
+    if (!tempPlayerConf) {
+      GStorage.setting.put(SettingBoxKey.showViewPoints, value);
+    }
+  }
   late final showFsScreenshotBtn = Pref.showFsScreenshotBtn;
   late final showFsLockBtn = Pref.showFsLockBtn;
   late final keyboardControl = Pref.keyboardControl;
@@ -492,7 +499,6 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
 
   late final progressType = Pref.btmProgressBehavior;
   late final enableQuickDouble = Pref.enableQuickDouble;
-  late final fullScreenGestureReverse = Pref.fullScreenGestureReverse;
 
   late final isRelative = Pref.useRelativeSlide;
   late final offset = isRelative

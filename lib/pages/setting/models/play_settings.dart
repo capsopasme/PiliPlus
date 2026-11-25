@@ -97,12 +97,6 @@ List<SettingsModel> get playSettings => [
       setKey: SettingBoxKey.setSystemBrightness,
       defaultVal: false,
     ),
-  const SwitchModel(
-    title: '中间滑动进入/退出全屏',
-    leading: Icon(MdiIcons.panVertical),
-    setKey: SettingBoxKey.enableSlideFS,
-    defaultVal: true,
-  ),
   if (PlatformUtils.isMobile)
     NormalModel(
       title: '播放器音量',
@@ -239,13 +233,6 @@ List<SettingsModel> get playSettings => [
       setKey: SettingBoxKey.pipNoDanmaku,
       defaultVal: false,
     ),
-  const SwitchModel(
-    title: '全屏手势反向',
-    subtitle: '默认播放器中部向上滑动进入全屏，向下退出\n开启后向下全屏，向上退出',
-    leading: Icon(Icons.swap_vert),
-    setKey: SettingBoxKey.fullScreenGestureReverse,
-    defaultVal: false,
-  ),
   const SwitchModel(
     title: '全屏展示点赞/投币/收藏等操作按钮',
     leading: Icon(MdiIcons.dotsHorizontalCircleOutline),

@@ -95,7 +95,7 @@ class BottomControl extends StatelessWidget {
                           segments: videoDetailController.segmentProgressList,
                         ),
                       ),
-                    if (controller.showViewPoints &&
+                    if (controller.showViewPoints.value &&
                         videoDetailController.viewPointList.isNotEmpty &&
                         videoDetailController.showVP.value)
                       Padding(
