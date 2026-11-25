@@ -14,6 +14,7 @@ import 'package:PiliPlus/grpc/bilibili/main/community/reply/v1.pb.dart'
 import 'package:PiliPlus/http/loading_state.dart';
 import 'package:PiliPlus/pages/common/slide/common_slide_page.dart';
 import 'package:PiliPlus/pages/video/reply/widgets/reply_item_grpc.dart';
+import 'package:PiliPlus/pages/video/reply/widgets/reply_style.dart';
 import 'package:PiliPlus/pages/video/reply_reply/controller.dart';
 import 'package:PiliPlus/utils/app_scheme.dart';
 import 'package:PiliPlus/utils/extension/widget_ext.dart';
@@ -145,7 +146,7 @@ class _VideoReplyReplyPanelState extends State<VideoReplyReplyPanel>
   Widget buildPage(ThemeData theme) {
     Widget child() => enableSlide ? slideList(theme) : buildList(theme);
     return SimpleColoredBox(
-      color: theme.canvasColor,
+      color: ReplyPalette.of(context).background,
       child: MiniScaffold(
         body: widget.isVideoDetail
             ? Column(
@@ -232,20 +233,16 @@ class _VideoReplyReplyPanelState extends State<VideoReplyReplyPanel>
             onCheckReply: _controller.onCheckReply,
           ),
         ),
-        SliverToBoxAdapter(
-          child: Divider(
-            height: 20,
-            color: theme.dividerColor.withValues(alpha: 0.1),
-            thickness: 6,
-          ),
-        ),
+        const SliverToBoxAdapter(child: SizedBox(height: 4)),
       ],
     );
   }
 
   Widget _sortWidget(ColorScheme colorScheme) {
     return SliverPinnedHeader(
-      backgroundColor: colorScheme.surface,
+      backgroundColor: ReplyPalette.of(
+        context,
+      ).background.withValues(alpha: 0.92),
       child: Padding(
         padding: const .fromLTRB(12, 2.5, 6, 2.5),
         child: Row(
@@ -302,22 +299,26 @@ class _VideoReplyReplyPanelState extends State<VideoReplyReplyPanel>
               alignment: Alignment.center,
               margin: .only(bottom: MediaQuery.viewPaddingOf(context).bottom),
               child: Text(
-                _controller.isEnd ? '没有更多了' : '加载中...',
+                _controller.isEnd ? '没有更多了' : '加载中…',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 12,
-                  color: colorScheme.outline,
+                  color: ReplyPalette.of(context).tertiaryLabel,
                 ),
               ),
             );
           }
           final child = _replyItem(context, response[index], index);
           if (jumpIndex == index) {
+            final background = ReplyPalette.of(context).background;
             return ColoredBoxTransition(
               color: _colorAnimation ??= _controller.animController.drive(
                 ColorTween(
-                  begin: colorScheme.onInverseSurface,
-                  end: colorScheme.surface,
+                  begin: Color.alphaBlend(
+                    colorScheme.primary.withValues(alpha: 0.12),
+                    background,
+                  ),
+                  end: background,
                   // 前0.8s不变, 后0.2s开始动画
                 ).chain(CurveTween(curve: const Interval(0.8, 1.0))),
               ),

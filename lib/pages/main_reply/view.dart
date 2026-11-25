@@ -149,6 +149,7 @@ class _MainReplyPageState extends State<MainReplyPage>
                       onDelete: (item, subIndex) =>
                           _controller.onRemove(index, item, subIndex),
                       upMid: _controller.upMid,
+                      threadStore: _controller.threadStore,
                       onCheckReply: _controller.onCheckReply,
                       onToggleTop: (item) => _controller.onToggleTop(
                         item,
