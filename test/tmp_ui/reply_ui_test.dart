@@ -56,10 +56,8 @@ void main() {
     GStorage.historyWord = await Hive.openBox('historyWord');
   });
 
-  tearDownAll(() async {
-    await Hive.close();
-    await tempDir.delete(recursive: true);
-  });
+  // 不在 tearDown 里 Hive.close()：构建期间若有写入挂在 FakeAsync 区里，
+  // close 会一直等它而卡住。临时目录交给系统清理。
 
   Widget host(List<Widget> children, {Brightness brightness = .light}) =>
       MaterialApp(

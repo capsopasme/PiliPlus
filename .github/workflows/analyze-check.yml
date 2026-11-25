@@ -38,9 +38,10 @@ jobs:
           cat /tmp/analyze.txt | tail -50
 
       - name: Widget test
+        timeout-minutes: 8
         run: |
           set +e
-          flutter test --no-pub test/tmp_ui > /tmp/test.txt 2>&1
+          flutter test --no-pub --timeout 120s test/tmp_ui > /tmp/test.txt 2>&1
           echo "exit=$?" >> /tmp/test.txt
           tail -80 /tmp/test.txt
 
