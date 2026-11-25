@@ -1,0 +1,8 @@
+
+::group::✅ Passing tests
+✅ level-1 card: thread preview, collapse, expand
+✅ level 0 / 2 / 3, skeleton, dark, both backgrounds
+::endgroup::
+
+🎉 2 tests passed.
+exit=0
