@@ -25,6 +25,7 @@ import 'package:PiliPlus/pages/setting/widgets/dual_slider_dialog.dart';
 import 'package:PiliPlus/pages/setting/widgets/multi_select_dialog.dart';
 import 'package:PiliPlus/pages/setting/widgets/select_dialog.dart';
 import 'package:PiliPlus/pages/setting/widgets/slider_dialog.dart';
+import 'package:PiliPlus/pages/video/reply/widgets/reply_style.dart';
 import 'package:PiliPlus/plugin/pl_player/utils/fullscreen.dart';
 import 'package:PiliPlus/utils/extension/file_ext.dart';
 import 'package:PiliPlus/utils/extension/get_ext.dart';
@@ -101,6 +102,13 @@ List<SettingsModel> get styleSettings => [
     leading: const Icon(Icons.animation),
     getSubtitle: () => '当前：${Pref.pageTransition.name}',
     onTap: _showTransitionDialog,
+  ),
+  NormalModel(
+    title: '评论区背景',
+    leading: const Icon(Icons.texture),
+    getSubtitle: () =>
+        '当前：${Pref.replyBackground.label}（深色模式下羊皮纸自动改用简介背景）',
+    onTap: _showReplyBackgroundDialog,
   ),
   const SwitchModel(
     title: '优化平板导航栏',
@@ -662,6 +670,25 @@ Future<void> _showTransitionDialog(
   if (res != null) {
     Get.rootController.defaultTransition = res;
     await GStorage.setting.put(SettingBoxKey.pageTransition, res.index);
+    setState();
+  }
+}
+
+Future<void> _showReplyBackgroundDialog(
+  BuildContext context,
+  VoidCallback setState,
+) async {
+  final res = await showDialog<ReplyBackgroundType>(
+    context: context,
+    builder: (context) => SelectDialog<ReplyBackgroundType>(
+      title: '评论区背景',
+      value: Pref.replyBackground,
+      values: ReplyBackgroundType.values.map((e) => (e, e.label)).toList(),
+    ),
+  );
+  if (res != null) {
+    await GStorage.setting.put(SettingBoxKey.replyBackground, res.index);
+    ReplyPalette.backgroundType.value = res;
     setState();
   }
 }

@@ -15,6 +15,9 @@ abstract final class Assets {
   static const ai = 'assets/images/ai.png';
   static const error = 'assets/images/error.svg';
 
+  /// 评论区羊皮纸背景
+  static const replyParchment = 'assets/images/reply_parchment.webp';
+
   static const livingChart = 'assets/images/live.gif';
   static const livingStatic = 'assets/images/live.png';
   static const livingRect = 'assets/images/live/live.gif';

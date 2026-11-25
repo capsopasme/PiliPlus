@@ -12,6 +12,7 @@ import 'package:PiliPlus/models/common/follow_order_type.dart';
 import 'package:PiliPlus/models/common/member/tab_type.dart';
 import 'package:PiliPlus/models/common/msg/msg_unread_type.dart';
 import 'package:PiliPlus/models/common/nav_bar_config.dart';
+import 'package:PiliPlus/models/common/reply/reply_background_type.dart';
 import 'package:PiliPlus/models/common/reply/reply_sort_type.dart';
 import 'package:PiliPlus/models/common/sponsor_block/segment_type.dart';
 import 'package:PiliPlus/models/common/sponsor_block/skip_type.dart';
@@ -377,6 +378,18 @@ abstract final class Pref {
 
   static bool get showViewPoints =>
       _setting.get(SettingBoxKey.showViewPoints, defaultValue: true);
+
+  static ReplyBackgroundType get replyBackground {
+    final int index = _setting.get(
+      SettingBoxKey.replyBackground,
+      defaultValue: ReplyBackgroundType.parchment.index,
+    );
+    return ReplyBackgroundType.values.getOrNull(index) ??
+        ReplyBackgroundType.parchment;
+  }
+
+  static bool get showPerfOverlay =>
+      _setting.get(SettingBoxKey.showPerfOverlay, defaultValue: false);
 
   static bool get showRelatedVideo =>
       _setting.get(SettingBoxKey.showRelatedVideo, defaultValue: true);

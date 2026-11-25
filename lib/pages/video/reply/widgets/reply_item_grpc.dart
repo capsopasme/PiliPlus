@@ -59,13 +59,15 @@ import 'package:protobuf/protobuf.dart';
 
 part 'package:PiliPlus/common/widgets/context_menu/reply_menu_helper.dart';
 
-/// 评论条目（iOS 风格卡片）。
+/// 评论条目。
 ///
 /// - 不再提供点赞/点踩/回复等写操作按钮，只读展示赞数；
+/// - 一级评论不包卡片、左右加宽，评论之间用半透明细线分隔；
+///   次级评论（楼中楼）放在半透明圆角卡片里；
 /// - [replyLevel] 为 1 且传入 [threadStore] 时，楼中楼采用 Reddit 式：
-///   默认显示接口自带的预览，点「展开 N 条回复」原地分页加载全部，
-///   点头部或左侧竖线把整串折叠成一行；
-/// - [replyLevel] 为 0（保存评论/我的评论）时不绘制卡片底色。
+///   默认显示前 3 条预览，点「展开 N 条回复」原地分页加载全部，
+///   点头部空白或左侧留白把整串折叠成一行；
+/// - [replyLevel] 为 0（保存评论/我的评论）时不画卡片和分隔线。
 class ReplyItemGrpc extends StatelessWidget {
   const ReplyItemGrpc({
     super.key,
@@ -108,7 +110,27 @@ class ReplyItemGrpc extends StatelessWidget {
   static bool enableWordRe = Pref.enableWordRe;
   static int? replyLengthLimit = Pref.replyLengthLimit;
 
-  bool get _isCard => replyLevel != 0;
+  bool get _isFlat => replyLevel == 0;
+
+  /// 楼中楼面板/对话列表里的次级评论单独成卡
+  bool get _isSubReplyCard => !_isFlat && replyItem.root != Int64.ZERO;
+
+  static ColorScheme? _linkSchemeBase;
+  static Color? _linkSchemeColor;
+  static ColorScheme? _linkScheme;
+
+  /// 链接色与主题主色不同（羊皮纸）时，用替换了 primary 的配色渲染正文
+  static ColorScheme _schemeWithLink(ColorScheme colorScheme, Color link) {
+    if (link == colorScheme.primary) {
+      return colorScheme;
+    }
+    if (identical(_linkSchemeBase, colorScheme) && _linkSchemeColor == link) {
+      return _linkScheme!;
+    }
+    _linkSchemeBase = colorScheme;
+    _linkSchemeColor = link;
+    return _linkScheme = colorScheme.copyWith(primary: link);
+  }
 
   void _showMorePanel(
     BuildContext context,
@@ -134,8 +156,8 @@ class ReplyItemGrpc extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = ColorScheme.of(context);
     final palette = ReplyPalette.of(context);
+    final colorScheme = _schemeWithLink(ColorScheme.of(context), palette.link);
     final ReplyThreadState? state = replyLevel == 1
         ? threadStore?.of(replyItem)
         : null;
@@ -171,30 +193,45 @@ class ReplyItemGrpc extends StatelessWidget {
       child: child,
     );
 
-    if (!_isCard) {
+    if (_isFlat) {
       return child;
     }
 
-    return Padding(
-      padding: ReplyStyle.cardMargin,
-      child: DecoratedBox(
-        decoration: ShapeDecoration(
-          color: palette.card,
-          shape: ReplyStyle.cardShape,
+    if (_isSubReplyCard) {
+      return Padding(
+        padding: ReplyStyle.subCardMargin,
+        child: DecoratedBox(
+          decoration: ShapeDecoration(
+            color: palette.subCard,
+            shape: ReplyStyle.subCardShape,
+          ),
+          child: child,
         ),
-        child: state == null
-            ? child
-            : AnimatedSize(
-                // 列表刷新/删除后同一位置可能换成另一条评论，按状态对象区分，
-                // 避免把"换了一条评论"的高度变化也做成动画
-                key: ObjectKey(state),
-                duration: const Duration(milliseconds: 220),
-                curve: Curves.easeOutCubic,
-                alignment: Alignment.topCenter,
-                child: child,
-              ),
-      ),
-    );
+      );
+    }
+
+    if (state != null) {
+      child = AnimatedSize(
+        // 列表刷新/删除后同一位置可能换成另一条评论，按状态对象区分，
+        // 避免把"换了一条评论"的高度变化也做成动画
+        key: ObjectKey(state),
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+        alignment: Alignment.topCenter,
+        child: child,
+      );
+    }
+    if (needDivider) {
+      child = Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          child,
+          ReplyDivider(color: palette.divider),
+        ],
+      );
+    }
+    return child;
   }
 
   /// 只读赞数（已赞时用主题色实心心形）
@@ -209,7 +246,7 @@ class ReplyItemGrpc extends StatelessWidget {
       return null;
     }
     final liked = item.replyControl.action == Int64.ONE;
-    final double fontSize = small ? 11.5 : 12.5;
+    final double fontSize = small ? 11 : 11.5;
     return Row(
       spacing: 3,
       mainAxisSize: MainAxisSize.min,
@@ -252,7 +289,7 @@ class ReplyItemGrpc extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 5),
+        padding: const EdgeInsets.symmetric(vertical: 4),
         child: child,
       ),
     );
@@ -274,7 +311,12 @@ class ReplyItemGrpc extends StatelessWidget {
         state.toggleCollapsed();
       },
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 10, 12, 10),
+        padding: const EdgeInsets.fromLTRB(
+          ReplyStyle.rootPadding,
+          10,
+          ReplyStyle.rootPadding,
+          10,
+        ),
         child: Row(
           children: [
             NetworkImgLayer(
@@ -300,7 +342,7 @@ class ReplyItemGrpc extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: ReplyStyle.meta.copyWith(
-                  fontSize: 13,
+                  fontSize: 12.5,
                   color: palette.secondaryLabel,
                 ),
               ),
@@ -345,9 +387,16 @@ class ReplyItemGrpc extends StatelessWidget {
     }
 
     return Padding(
-      padding: _isCard
-          ? ReplyStyle.cardPadding
-          : const EdgeInsets.fromLTRB(12, 12, 12, 10),
+      padding: _isFlat
+          ? const EdgeInsets.fromLTRB(12, 12, 12, 10)
+          : _isSubReplyCard
+          ? ReplyStyle.subCardPadding
+          : const EdgeInsets.fromLTRB(
+              ReplyStyle.rootPadding,
+              12,
+              ReplyStyle.rootPadding,
+              12,
+            ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -574,7 +623,7 @@ class ReplyItemGrpc extends StatelessWidget {
           ],
         ),
         style: ReplyStyle.meta.copyWith(
-          fontSize: 12.5,
+          fontSize: 12,
           height: 1.5,
           color: palette.secondaryLabel,
         ),
@@ -600,7 +649,7 @@ class ReplyItemGrpc extends StatelessWidget {
     } else if (replyControl.cardLabels.isNotEmpty) {
       children.add(
         Padding(
-          padding: const EdgeInsets.symmetric(vertical: 5),
+          padding: const EdgeInsets.symmetric(vertical: 4),
           child: Text(
             replyControl.cardLabels.map((e) => e.textContent).join('  '),
             style: textStyle.copyWith(color: colorScheme.secondary),
@@ -678,12 +727,12 @@ class ReplyItemGrpc extends StatelessWidget {
         }
       },
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 5),
+        padding: const EdgeInsets.symmetric(vertical: 4),
         child: Row(
           spacing: 3,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.translate, size: 14, color: color),
+            Icon(Icons.translate, size: 13, color: color),
             Text(
               replyControl.showTranslation ? '原文' : '翻译',
               style: textStyle.copyWith(color: color),
@@ -694,14 +743,17 @@ class ReplyItemGrpc extends StatelessWidget {
     );
   }
 
-  /// 楼中楼（Reddit 式）：左侧竖线位于主评论头像正下方
+  /// 楼中楼（Reddit 式）：放在与正文对齐的半透明圆角卡片里，默认显示前 3 条
   Widget _buildThread(
     BuildContext context,
     ColorScheme colorScheme,
     ReplyPalette palette,
     ReplyThreadState? state,
   ) {
-    final preview = replyItem.replies;
+    final List<ReplyInfo> preview =
+        replyItem.replies.length > ReplyStyle.previewCount
+        ? replyItem.replies.sublist(0, ReplyStyle.previewCount)
+        : replyItem.replies;
     final List<ReplyInfo>? loaded = state?.loaded;
     final bool showAll = state != null && state.showAll && loaded != null;
     final List<ReplyInfo> items = showAll ? loaded : preview;
@@ -751,33 +803,40 @@ class ReplyItemGrpc extends StatelessWidget {
     }
 
     return Padding(
-      padding: const EdgeInsets.only(top: 6),
+      padding: const EdgeInsets.only(top: 8),
       child: Stack(
         children: [
           Padding(
             padding: const EdgeInsets.only(left: ReplyStyle.contentIndent),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                for (final child in items)
-                  _buildSubReply(context, colorScheme, palette, child, state),
-                ?footer,
-              ],
-            ),
-          ),
-          Positioned(
-            left: (ReplyStyle.avatarSize - 2) / 2,
-            top: 4,
-            bottom: 4,
-            width: 2,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: palette.thread,
-                borderRadius: const BorderRadius.all(Radius.circular(1)),
+            child: SizedBox(
+              width: double.infinity,
+              child: DecoratedBox(
+                decoration: ShapeDecoration(
+                  color: palette.subCard,
+                  shape: ReplyStyle.subCardShape,
+                ),
+                child: Padding(
+                  padding: ReplyStyle.threadCardPadding,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      for (final child in items)
+                        _buildSubReply(
+                          context,
+                          colorScheme,
+                          palette,
+                          child,
+                          state,
+                        ),
+                      ?footer,
+                    ],
+                  ),
+                ),
               ),
             ),
           ),
+          // 卡片左侧（主评论头像正下方）的留白：点按整串折叠
           if (state != null)
             Positioned(
               left: 0,
@@ -874,7 +933,7 @@ class ReplyItemGrpc extends StatelessWidget {
                 Text(
                   DateFormatUtils.dateFormat(child.ctime.toInt()),
                   style: ReplyStyle.meta.copyWith(
-                    fontSize: 11,
+                    fontSize: 10.5,
                     color: palette.tertiaryLabel,
                   ),
                 ),
@@ -945,6 +1004,38 @@ class ReplyItemGrpc extends StatelessWidget {
     state?.notifyChanged();
   }
 
+  static const _basePatterns = [
+    r'(?:\d+[:：])?\d+[:：]\d+',
+    r'\{vote:\d+?\}',
+  ];
+
+  /// 不含表情/话题/@/链接关键字的评论（占大多数）共用一个预编译的正则
+  static final RegExp _basePattern = RegExp(
+    [..._basePatterns, Constants.urlRegex.pattern].join('|'),
+  );
+
+  /// 含关键字的评论按 Content 缓存编译好的正则，来回滑动重建时不再重新编译
+  static final Expando<RegExp> _patternCache = Expando<RegExp>();
+
+  static RegExp _patternFor(Content content) {
+    if (content.emotes.isEmpty &&
+        content.topics.isEmpty &&
+        content.atNameToMid.isEmpty &&
+        content.urls.isEmpty) {
+      return _basePattern;
+    }
+    return _patternCache[content] ??= RegExp(
+      [
+        ...content.emotes.keys.map(RegExp.escape),
+        ...content.topics.keys.map((e) => RegExp.escape('#$e#')),
+        ...content.atNameToMid.keys.map((e) => RegExp.escape('@$e')),
+        ...content.urls.keys.map(RegExp.escape),
+        ..._basePatterns,
+        Constants.urlRegex.pattern,
+      ].join('|'),
+    );
+  }
+
   InlineSpan _buildMessage(
     BuildContext context,
     ColorScheme colorScheme,
@@ -954,21 +1045,7 @@ class ReplyItemGrpc extends StatelessWidget {
     final List<InlineSpan> spanChildren = <InlineSpan>[];
     bool hasNote = false;
 
-    final urlKeys = content.urls.keys;
-    // 构建正则表达式
-    final List<String> specialTokens = [
-      ...content.emotes.keys,
-      ...content.topics.keys.map((e) => '#$e#'),
-      ...content.atNameToMid.keys.map((e) => '@$e'),
-      ...urlKeys,
-    ];
-    String patternStr = [
-      ...specialTokens.map(RegExp.escape),
-      r'(?:\d+[:：])?\d+[:：]\d+',
-      r'\{vote:\d+?\}',
-      Constants.urlRegex.pattern,
-    ].join('|');
-    final RegExp pattern = RegExp(patternStr);
+    final RegExp pattern = _patternFor(content);
 
     late List<String> matchedUrls = [];
 

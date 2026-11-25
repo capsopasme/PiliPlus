@@ -145,9 +145,18 @@ class _VideoReplyReplyPanelState extends State<VideoReplyReplyPanel>
   @override
   Widget buildPage(ThemeData theme) {
     Widget child() => enableSlide ? slideList(theme) : buildList(theme);
-    return SimpleColoredBox(
-      color: ReplyPalette.of(context).background,
-      child: MiniScaffold(
+    return ReplyBackground(
+      child: SimpleColoredBox(
+        color: ReplyPalette.of(context).parchment
+            ? Colors.transparent
+            : theme.canvasColor,
+        child: _buildScaffold(theme, child),
+      ),
+    );
+  }
+
+  Widget _buildScaffold(ThemeData theme, Widget Function() child) {
+    return MiniScaffold(
         body: widget.isVideoDetail
             ? Column(
                 children: [
@@ -178,7 +187,6 @@ class _VideoReplyReplyPanelState extends State<VideoReplyReplyPanel>
                 ],
               )
             : child(),
-      ),
     );
   }
 
@@ -233,16 +241,18 @@ class _VideoReplyReplyPanelState extends State<VideoReplyReplyPanel>
             onCheckReply: _controller.onCheckReply,
           ),
         ),
-        const SliverToBoxAdapter(child: SizedBox(height: 4)),
+        SliverToBoxAdapter(
+          child: ReplyDivider(color: ReplyPalette.of(context).divider),
+        ),
+        const SliverToBoxAdapter(child: SizedBox(height: 6)),
       ],
     );
   }
 
   Widget _sortWidget(ColorScheme colorScheme) {
+    final palette = ReplyPalette.of(context);
     return SliverPinnedHeader(
-      backgroundColor: ReplyPalette.of(
-        context,
-      ).background.withValues(alpha: 0.92),
+      backgroundColor: palette.headerBackground,
       child: Padding(
         padding: const .fromLTRB(12, 2.5, 6, 2.5),
         child: Row(
@@ -254,7 +264,10 @@ class _VideoReplyReplyPanelState extends State<VideoReplyReplyPanel>
                 return count != -1
                     ? Text(
                         '相关回复共${NumUtils.numFormat(count)}条',
-                        style: const TextStyle(fontSize: 13),
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          color: palette.secondaryLabel,
+                        ),
                       )
                     : const SizedBox.shrink();
               },
@@ -262,11 +275,11 @@ class _VideoReplyReplyPanelState extends State<VideoReplyReplyPanel>
             TextButton.icon(
               style: Style.buttonStyle,
               onPressed: _controller.queryBySort,
-              icon: Icon(Icons.sort, size: 16, color: colorScheme.secondary),
+              icon: Icon(Icons.sort, size: 15, color: palette.link),
               label: Obx(
                 () => Text(
                   _controller.sortType.value.label,
-                  style: TextStyle(fontSize: 13, color: colorScheme.secondary),
+                  style: TextStyle(fontSize: 12.5, color: palette.link),
                 ),
               ),
             ),
@@ -310,15 +323,13 @@ class _VideoReplyReplyPanelState extends State<VideoReplyReplyPanel>
           }
           final child = _replyItem(context, response[index], index);
           if (jumpIndex == index) {
-            final background = ReplyPalette.of(context).background;
+            final highlight = ReplyPalette.of(context).link;
             return ColoredBoxTransition(
               color: _colorAnimation ??= _controller.animController.drive(
                 ColorTween(
-                  begin: Color.alphaBlend(
-                    colorScheme.primary.withValues(alpha: 0.12),
-                    background,
-                  ),
-                  end: background,
+                  begin: highlight.withValues(alpha: 0.14),
+                  // 渐隐到全透明，透出底下的背景（羊皮纸/页面底色）
+                  end: highlight.withValues(alpha: 0),
                   // 前0.8s不变, 后0.2s开始动画
                 ).chain(CurveTween(curve: const Interval(0.8, 1.0))),
               ),

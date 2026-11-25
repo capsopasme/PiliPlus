@@ -623,6 +623,16 @@ List<SettingsModel> get extraSettings => [
       }
     },
   ),
+  const SwitchModel(
+    title: '性能浮层（排查卡顿）',
+    subtitle:
+        '在屏幕顶部显示两条帧耗时曲线：上方为界面线程（构建/布局），下方为绘制线程（GPU）。'
+        '出现红色竖条即为掉帧，可截图判断卡在哪一侧。浮层本身也有开销，排查完请关闭',
+    leading: Icon(Icons.speed),
+    setKey: SettingBoxKey.showPerfOverlay,
+    defaultVal: false,
+    needReboot: true,
+  ),
 ];
 
 SwitchModel _audioNormalizationModel() {
