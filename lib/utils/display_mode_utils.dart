@@ -3,8 +3,8 @@ import 'package:PiliPlus/utils/storage_key.dart';
 import 'package:collection/collection.dart';
 import 'package:flutter_displaymode/flutter_displaymode.dart';
 
-/// 播放期间临时限制屏幕刷新率，降低屏幕刷新与 Flutter 合成（含弹幕动画）的功耗。
-/// 退出播放后恢复为用户在「屏幕帧率设置」中选择的模式（未设置则为系统自动）。
+/// 全屏播放期间临时限制屏幕刷新率，降低屏幕刷新与 Flutter 合成（含弹幕动画）的功耗。
+/// 退出全屏/播放后恢复为用户在「屏幕帧率设置」中选择的模式（未设置则为系统自动）。
 abstract final class DisplayModeUtils {
   static bool _limited = false;
 
