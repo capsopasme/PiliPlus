@@ -1,0 +1,52 @@
+name: Analyze Check (temp)
+
+on:
+  push:
+    branches:
+      - claude/ci-check
+
+permissions:
+  contents: write
+
+concurrency:
+  group: analyze-check
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version-file: pubspec.yaml
+          cache: true
+
+      - name: Apply Patch
+        shell: pwsh
+        run: lib/scripts/patch.ps1 android
+
+      - name: Analyze
+        run: |
+          set +e
+          flutter analyze --no-pub --no-fatal-infos --no-fatal-warnings > /tmp/analyze.txt 2>&1
+          echo "exit=$?" >> /tmp/analyze.txt
+          cat /tmp/analyze.txt | tail -50
+
+      - name: Publish result
+        if: always()
+        run: |
+          SHA=$(git rev-parse HEAD)
+          cp /tmp/analyze.txt /tmp/result.txt 2>/dev/null || echo "analyze did not run" > /tmp/result.txt
+          cd /tmp && rm -rf res && mkdir res && cd res
+          git init -q
+          git config user.name ci
+          git config user.email ci@example.com
+          echo "$SHA" > sha.txt
+          cp /tmp/result.txt analyze.txt
+          git add . && git commit -q -m "analyze $SHA"
+          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" HEAD:refs/heads/claude/ci-result
