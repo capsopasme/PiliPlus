@@ -37,6 +37,13 @@ jobs:
           echo "exit=$?" >> /tmp/analyze.txt
           cat /tmp/analyze.txt | tail -50
 
+      - name: Widget test
+        run: |
+          set +e
+          flutter test --no-pub test/tmp_ui > /tmp/test.txt 2>&1
+          echo "exit=$?" >> /tmp/test.txt
+          tail -80 /tmp/test.txt
+
       - name: Publish result
         if: always()
         run: |
@@ -48,5 +55,6 @@ jobs:
           git config user.email ci@example.com
           echo "$SHA" > sha.txt
           cp /tmp/result.txt analyze.txt
+          cp /tmp/test.txt test.txt 2>/dev/null || echo "test did not run" > test.txt
           git add . && git commit -q -m "analyze $SHA"
           git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" HEAD:refs/heads/claude/ci-result
