@@ -94,11 +94,33 @@ class _MainAppState extends PopScopeState<MainApp>
   @override
   void didPopNext() {
     addObserverMobile(this);
-    _mainController
-      ..checkUnreadDynamic()
-      ..checkDefaultSearch(true)
-      ..checkUnread(_mainController.useBottomNav);
+    // 返回首页时上层页面还在做退出过渡（topLevel/zoom 会给两页都做快照动画）。
+    // 等过渡结束再刷新未读数/默认搜索词，避免网络回调引起的重建、重排与过渡动画抢同一帧
+    _afterRouteTransition(() {
+      _mainController
+        ..checkUnreadDynamic()
+        ..checkDefaultSearch(true)
+        ..checkUnread(_mainController.useBottomNav);
+    });
     super.didPopNext();
+  }
+
+  void _afterRouteTransition(VoidCallback callback) {
+    final animation = ModalRoute.of(context)?.secondaryAnimation;
+    if (animation == null || !animation.isAnimating) {
+      callback();
+      return;
+    }
+    void listener(AnimationStatus status) {
+      if (!status.isAnimating) {
+        animation.removeStatusListener(listener);
+        if (mounted) {
+          callback();
+        }
+      }
+    }
+
+    animation.addStatusListener(listener);
   }
 
   @override

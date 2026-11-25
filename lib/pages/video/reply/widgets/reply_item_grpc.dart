@@ -185,6 +185,9 @@ class ReplyItemGrpc extends StatelessWidget {
         child: state == null
             ? child
             : AnimatedSize(
+                // 列表刷新/删除后同一位置可能换成另一条评论，按状态对象区分，
+                // 避免把"换了一条评论"的高度变化也做成动画
+                key: ObjectKey(state),
                 duration: const Duration(milliseconds: 220),
                 curve: Curves.easeOutCubic,
                 alignment: Alignment.topCenter,
@@ -701,7 +704,7 @@ class ReplyItemGrpc extends StatelessWidget {
     final preview = replyItem.replies;
     final List<ReplyInfo>? loaded = state?.loaded;
     final bool showAll = state != null && state.showAll && loaded != null;
-    final List<ReplyInfo> items = showAll ? loaded! : preview;
+    final List<ReplyInfo> items = showAll ? loaded : preview;
     final int total = replyItem.count.toInt();
     final linkStyle = ReplyStyle.action.copyWith(color: colorScheme.primary);
     final mutedStyle = ReplyStyle.action.copyWith(
