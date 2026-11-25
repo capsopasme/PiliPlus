@@ -11,7 +11,8 @@ Widget buildDmChart(
       height: 12,
       margin: EdgeInsets.only(
         bottom:
-            videoDetailController.viewPointList.isNotEmpty &&
+            videoDetailController.plPlayerController.showViewPoints.value &&
+                videoDetailController.viewPointList.isNotEmpty &&
                 videoDetailController.showVP.value
             ? 19.25 + offset
             : 4.25 + offset,

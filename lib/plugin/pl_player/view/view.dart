@@ -150,6 +150,9 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
   GestureType? _gestureType;
   Offset? _initialFocalPoint;
 
+  /// 最近一次单指按下的位置（播放器本地坐标）
+  Offset? _panDownPosition;
+
   bool _pauseDueToPauseUponEnteringBackgroundMode = false;
 
   StreamSubscription? _brightnessListener;
@@ -528,7 +531,8 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
       /// 分段信息
       BottomControlType.viewPoints => Obx(
         () {
-          if (videoDetailController.viewPointList.isNotEmpty) {
+          if (plPlayerController.showViewPoints.value &&
+              videoDetailController.viewPointList.isNotEmpty) {
             return ComBtn(
               width: widgetWidth,
               height: 30,
@@ -895,7 +899,7 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
     final List<BottomControlType> userSpecifyItemRight = [
       if (isNotFileSource && plPlayerController.showDmChart) .dmChart,
       if (plPlayerController.isAnim) .superResolution,
-      if (isNotFileSource && plPlayerController.showViewPoints) .viewPoints,
+      if (isNotFileSource) .viewPoints,
       if (isNotFileSource && anySeason) .episode,
       if (flag) .fit,
       if (isNotFileSource) .aiTranslate,
@@ -942,7 +946,15 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
 
   void _onPanStart(ScaleStartDetails details) {
     _gestureType = null;
-    _initialFocalPoint = details.localFocalPoint;
+    final start = details.localFocalPoint;
+    // 识别器越过 slop 才回调 onStart，此时手指已经走了一小段。
+    // 以按下点为起点，分区（左/中/右）和方向判定都把这段位移算进去，
+    // 斜着起手或起手很快也能判对；距离过远说明不是同一次按下（如双指松开一指），退回用 start。
+    final down = _panDownPosition;
+    _initialFocalPoint =
+        down != null && (start - down).distanceSquared <= 64 * 64
+        ? down
+        : start;
   }
 
   void _onScaleUpdate(double scale) {
@@ -987,27 +999,36 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
     plPlayerController.onSeekEnd();
   }
 
+  /// 方向明显（主轴分量是另一轴的 1.5 倍以上）时立即锁定；
+  /// 接近对角线时再多走一点，到这个距离后按主轴决定。
+  /// 保证每次滑动都会落到某一类手势上，不会因"判不出方向"而被吞掉。
+  static const double _kDirectionLockDistance = 24.0;
+
+  /// 中间区域上下滑动触发全屏切换所需的位移（自按下点起算）
+  static const double _kFullScreenSwipeDistance = 14.0;
+
   void _onPanUpdate(ScaleUpdateDetails details) {
     if (_gestureType == null) {
       final cumulativeDelta = details.localFocalPoint - _initialFocalPoint!;
-      if (cumulativeDelta.distanceSquared < 1) return;
       final dx = cumulativeDelta.dx.abs();
       final dy = cumulativeDelta.dy.abs();
-      if (dx > 3 * dy) {
+      if (dx + dy < 1) return;
+      if (dx <= dy * 1.5 &&
+          dy <= dx * 1.5 &&
+          dx + dy < _kDirectionLockDistance) {
+        return;
+      }
+      if (dx > dy) {
         _onHorizontalDragStart();
         _gestureType = .horizontal;
-      } else if (dy > 3 * dx) {
-        if (!plPlayerController.enableSlideVolumeBrightness &&
-            !plPlayerController.enableSlideFS) {
-          return;
-        }
-
-        final double tapPosition = details.localFocalPoint.dx;
+      } else {
+        // 以按下位置分区，而不是当前手指位置
+        final double tapPosition = _initialFocalPoint!.dx;
         final double sectionWidth = maxWidth / 3;
-        if (tapPosition < sectionWidth) {
-          if (!plPlayerController.enableSlideVolumeBrightness) {
-            return;
-          }
+        if (!plPlayerController.enableSlideVolumeBrightness) {
+          // 未开启左右侧亮度/音量时，整个宽度都用于全屏手势
+          _gestureType = .center;
+        } else if (tapPosition < sectionWidth) {
           // 左边区域
           if (PlatformUtils.isDesktop) {
             _gestureType = .right;
@@ -1015,20 +1036,15 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
             _gestureType = .left;
           }
         } else if (tapPosition < sectionWidth * 2) {
-          if (!plPlayerController.enableSlideFS) {
-            return;
-          }
           // 全屏
           _gestureType = .center;
         } else {
-          if (!plPlayerController.enableSlideVolumeBrightness) {
-            return;
-          }
           // 右边区域
           _gestureType = .right;
         }
       }
-      return;
+      if (_gestureType != .center) return;
+      // 中间区域：方向锁定时可能已越过阈值，直接往下走判断
     }
 
     Offset delta = details.focalPointDelta;
@@ -1082,28 +1098,12 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
           .clamp(0.0, 1.0);
       setBrightness(brightness);
     } else if (_gestureType == .center) {
-      // 全屏
-      const double threshold = 2.5; // 滑动阈值
-      double cumulativeDy = details.localFocalPoint.dy - _initialFocalPoint!.dy;
-
-      void fullScreenTrigger(bool status) {
-        plPlayerController.triggerFullScreen(status: status);
-      }
-
-      if (cumulativeDy > threshold) {
-        _gestureType = .center_down;
-        if (isFullScreen ^ plPlayerController.fullScreenGestureReverse) {
-          fullScreenTrigger(
-            plPlayerController.fullScreenGestureReverse,
-          );
-        }
-      } else if (cumulativeDy < -threshold) {
-        _gestureType = .center_up;
-        if (!isFullScreen ^ plPlayerController.fullScreenGestureReverse) {
-          fullScreenTrigger(
-            !plPlayerController.fullScreenGestureReverse,
-          );
-        }
+      // 全屏：上滑、下滑都切换（不区分方向），每次手势只触发一次
+      final double cumulativeDy =
+          details.localFocalPoint.dy - _initialFocalPoint!.dy;
+      if (cumulativeDy.abs() >= _kFullScreenSwipeDistance) {
+        _gestureType = cumulativeDy > 0 ? .center_down : .center_up;
+        plPlayerController.triggerFullScreen(status: !isFullScreen);
       }
     } else if (_gestureType == .right) {
       // 右边区域
@@ -1128,6 +1128,7 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
       _onHorizontalDragEnd();
     }
     _initialFocalPoint = null;
+    _panDownPosition = null;
     _gestureType = null;
   }
 
@@ -1215,11 +1216,19 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
 
   static const _kOffsetThreshold = 25.0;
   bool _isPositionAllowed(Offset offset) {
+    // 左右边缘是系统返回手势区域，始终避开。
     if (offset.dx < _kOffsetThreshold ||
-        offset.dy < _kOffsetThreshold ||
-        offset.dx > maxWidth - _kOffsetThreshold ||
-        offset.dy > maxHeight - _kOffsetThreshold) {
+        offset.dx > maxWidth - _kOffsetThreshold) {
       return false;
+    }
+    // 上下边缘只有在播放器贴住屏幕边缘时（全屏/横屏）才会与
+    // 系统下拉通知栏、底部手势条冲突；竖屏小窗时播放器上下都不贴边，
+    // 不再屏蔽这两条区域，避免从画面上沿/下沿起手的滑动被吞掉。
+    if (isFullScreen || MediaQuery.orientationOf(context) == .landscape) {
+      if (offset.dy < _kOffsetThreshold ||
+          offset.dy > maxHeight - _kOffsetThreshold) {
+        return false;
+      }
     }
     return true;
   }
@@ -1247,6 +1256,7 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
           _doubleTapGestureRecognizer.addPointer(event);
           longPressRecognizer.addPointer(event);
         }
+        _panDownPosition = event.localPosition;
         _scaleGestureRecognizer
           ..isPosAllowed = _isPositionAllowed(event.localPosition)
           ..addPointer(event);
@@ -1259,6 +1269,7 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
         _doubleTapGestureRecognizer.addPointer(event);
         longPressRecognizer.addPointer(event);
       }
+      _panDownPosition = event.localPosition;
       _scaleGestureRecognizer.addPointer(event);
     }
   }
@@ -1758,7 +1769,7 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
                             segments: videoDetailController.segmentProgressList,
                           ),
                         ),
-                      if (plPlayerController.showViewPoints &&
+                      if (plPlayerController.showViewPoints.value &&
                           videoDetailController.viewPointList.isNotEmpty &&
                           videoDetailController.showVP.value)
                         Padding(

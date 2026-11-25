@@ -1145,9 +1145,7 @@ class VideoDetailController extends GetxController
   Future<void> _queryPlayInfo() async {
     vttSubtitles.clear();
     vttSubtitlesIndex.value = 0;
-    if (plPlayerController.showViewPoints) {
-      viewPointList.clear();
-    }
+    viewPointList.clear();
     final res = await VideoHttp.playInfo(
       bvid: bvid,
       cid: cid.value,
@@ -1183,8 +1181,9 @@ class VideoDetailController extends GetxController
         }
       }
 
-      if (plPlayerController.showViewPoints &&
-          response.viewPoints?.firstOrNull?.type == 2) {
+      // 分段数据始终解析（很轻量），显示与否由 showViewPoints 实时控制，
+      // 这样在视频页打开开关时无需重新请求
+      if (response.viewPoints?.firstOrNull?.type == 2) {
         try {
           viewPointList.value = response.viewPoints!.map((item) {
             final end = (item.to! / (data.timeLength! / 1000)).clamp(0.0, 1.0);
@@ -1336,9 +1335,7 @@ class VideoDetailController extends GetxController
       }
 
       // view point
-      if (plPlayerController.showViewPoints) {
-        viewPointList.clear();
-      }
+      viewPointList.clear();
 
       // interactive video
       if (!isStein) {

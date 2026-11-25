@@ -469,6 +469,28 @@ class HeaderControlState extends State<HeaderControl>
                     leading: const Icon(Icons.refresh_outlined, size: 20),
                     title: const Text('重载视频', style: titleStyle),
                   ),
+                  Obx(() {
+                    final showViewPoints =
+                        plPlayerController.showViewPoints.value;
+                    return ListTile(
+                      dense: true,
+                      onTap: () =>
+                          plPlayerController.setShowViewPoints(!showViewPoints),
+                      leading: const Icon(
+                        CustomIcons.view_headline_rotate_90,
+                        size: 20,
+                      ),
+                      title: const Text('显示视频分段信息', style: titleStyle),
+                      trailing: Transform.scale(
+                        alignment: .centerRight,
+                        scale: 0.8,
+                        child: Switch(
+                          value: showViewPoints,
+                          onChanged: plPlayerController.setShowViewPoints,
+                        ),
+                      ),
+                    );
+                  }),
                 ],
                 PopupListTile<SuperResolutionType>(
                   dense: true,

@@ -28,6 +28,7 @@ import 'package:PiliPlus/pages/setting/models/model.dart';
 import 'package:PiliPlus/pages/setting/widgets/select_dialog.dart';
 import 'package:PiliPlus/pages/setting/widgets/slider_dialog.dart';
 import 'package:PiliPlus/pages/video/reply/widgets/reply_item_grpc.dart';
+import 'package:PiliPlus/plugin/pl_player/controller.dart';
 import 'package:PiliPlus/services/download/download_service.dart';
 import 'package:PiliPlus/utils/accounts.dart';
 import 'package:PiliPlus/utils/android/bindings.g.dart';
@@ -119,6 +120,7 @@ List<SettingsModel> get extraSettings => [
     leading: Icon(CustomIcons.view_headline_rotate_90),
     setKey: SettingBoxKey.showViewPoints,
     defaultVal: true,
+    onChanged: _onShowViewPointsChanged,
   ),
   const SwitchModel(
     title: '视频页显示相关视频',
@@ -635,6 +637,11 @@ SwitchModel _audioNormalizationModel() {
     setKey: SettingBoxKey.audioNormalization,
     defaultVal: false,
   );
+}
+
+/// 设置页切换时同步到正在使用的播放器（视频页在后台时也能立即生效）
+void _onShowViewPointsChanged(bool value) {
+  PlPlayerController.instance?.showViewPoints.value = value;
 }
 
 void _showDownPathDialog(BuildContext context, VoidCallback setState) {
