@@ -310,6 +310,8 @@ class MyApp extends StatelessWidget {
       ],
       scrollBehavior: PlatformUtils.isDesktop
           ? const CustomScrollBehavior()
+          : Platform.isAndroid
+          ? const MobileScrollBehavior()
           : null,
     );
   }
