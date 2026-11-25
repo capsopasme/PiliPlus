@@ -8,6 +8,7 @@ import 'package:PiliPlus/models/common/reply/reply_sort_type.dart';
 import 'package:PiliPlus/models_new/dynamic/dyn_mention/item.dart';
 import 'package:PiliPlus/pages/common/common_list_controller.dart';
 import 'package:PiliPlus/pages/common/publish/publish_route.dart';
+import 'package:PiliPlus/pages/video/reply/widgets/reply_thread.dart';
 import 'package:PiliPlus/pages/video/reply_new/view.dart';
 import 'package:PiliPlus/utils/feed_back.dart';
 import 'package:PiliPlus/utils/reply_utils.dart';
@@ -26,6 +27,9 @@ abstract class ReplyController<R> extends CommonListController<R, ReplyInfo> {
   late Mode mode;
 
   final savedReplies = <Object, List<RichTextItem>?>{};
+
+  /// 楼中楼原地展开/折叠状态（列表项被回收后仍保留）
+  final threadStore = ReplyThreadStore();
 
   Int64? upMid;
   Int64? cursorNext;
@@ -84,6 +88,7 @@ abstract class ReplyController<R> extends CommonListController<R, ReplyInfo> {
     cursorNext = null;
     subjectControl = null;
     paginationReply = null;
+    threadStore.clear();
     return super.onRefresh();
   }
 
@@ -258,6 +263,7 @@ abstract class ReplyController<R> extends CommonListController<R, ReplyInfo> {
   @override
   void onClose() {
     savedReplies.clear();
+    threadStore.clear();
     super.onClose();
   }
 }

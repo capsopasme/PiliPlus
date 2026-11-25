@@ -1,6 +1,5 @@
 import 'dart:math';
 
-import 'package:PiliPlus/common/assets.dart';
 import 'package:PiliPlus/common/constants.dart';
 import 'package:PiliPlus/common/style.dart';
 import 'package:PiliPlus/common/widgets/badge.dart';
@@ -12,9 +11,7 @@ import 'package:PiliPlus/common/widgets/gesture/tap_gesture_recognizer.dart';
 import 'package:PiliPlus/common/widgets/image/network_img_layer.dart';
 import 'package:PiliPlus/common/widgets/image_grid/image_grid_view.dart';
 import 'package:PiliPlus/common/widgets/pendant_avatar.dart';
-import 'package:PiliPlus/common/widgets/text_ellipsis/text_ellipsis.dart';
 import 'package:PiliPlus/common/widgets/text_more/text_more.dart';
-import 'package:PiliPlus/common/widgets/translucent_row.dart';
 import 'package:PiliPlus/grpc/bilibili/main/community/reply/v1.pb.dart'
     show ReplyInfo, ReplyControl, Content, Url, ReplyControl_VoteOption, Emote;
 import 'package:PiliPlus/grpc/reply.dart';
@@ -25,11 +22,11 @@ import 'package:PiliPlus/pages/dynamics/widgets/vote.dart';
 import 'package:PiliPlus/pages/member/widget/medal_widget.dart';
 import 'package:PiliPlus/pages/save_panel/view.dart';
 import 'package:PiliPlus/pages/video/controller.dart';
-import 'package:PiliPlus/pages/video/reply/widgets/zan_grpc.dart';
+import 'package:PiliPlus/pages/video/reply/widgets/reply_style.dart';
+import 'package:PiliPlus/pages/video/reply/widgets/reply_thread.dart';
 import 'package:PiliPlus/utils/accounts.dart';
 import 'package:PiliPlus/utils/app_scheme.dart';
 import 'package:PiliPlus/utils/bili_utils.dart';
-import 'package:PiliPlus/utils/color_utils.dart';
 import 'package:PiliPlus/utils/danmaku_utils.dart';
 import 'package:PiliPlus/utils/date_utils.dart';
 import 'package:PiliPlus/utils/duration_utils.dart';
@@ -42,6 +39,7 @@ import 'package:PiliPlus/utils/extension/theme_ext.dart';
 import 'package:PiliPlus/utils/feed_back.dart';
 import 'package:PiliPlus/utils/global_data.dart';
 import 'package:PiliPlus/utils/image_utils.dart';
+import 'package:PiliPlus/utils/num_utils.dart';
 import 'package:PiliPlus/utils/page_utils.dart';
 import 'package:PiliPlus/utils/platform_utils.dart';
 import 'package:PiliPlus/utils/storage.dart';
@@ -61,6 +59,13 @@ import 'package:protobuf/protobuf.dart';
 
 part 'package:PiliPlus/common/widgets/context_menu/reply_menu_helper.dart';
 
+/// 评论条目（iOS 风格卡片）。
+///
+/// - 不再提供点赞/点踩/回复等写操作按钮，只读展示赞数；
+/// - [replyLevel] 为 1 且传入 [threadStore] 时，楼中楼采用 Reddit 式：
+///   默认显示接口自带的预览，点「展开 N 条回复」原地分页加载全部，
+///   点头部或左侧竖线把整串折叠成一行；
+/// - [replyLevel] 为 0（保存评论/我的评论）时不绘制卡片底色。
 class ReplyItemGrpc extends StatelessWidget {
   const ReplyItemGrpc({
     super.key,
@@ -77,11 +82,14 @@ class ReplyItemGrpc extends StatelessWidget {
     this.onCheckReply,
     this.onToggleTop,
     this.jumpToDialogue,
+    this.threadStore,
   });
   final ReplyInfo replyItem;
   final int replyLevel;
   final Function(ReplyInfo replyItem, int? rpid)? replyReply;
   final bool needDivider;
+
+  /// 已不再展示回复按钮，保留参数以兼容调用方
   final ValueChanged<ReplyInfo>? onReply;
   final Function(ReplyInfo replyItem, int? subIndex)? onDelete;
   final Int64? upMid;
@@ -92,316 +100,529 @@ class ReplyItemGrpc extends StatelessWidget {
   final ValueChanged<ReplyInfo>? onToggleTop;
   final VoidCallback? jumpToDialogue;
 
+  /// 楼中楼原地展开/折叠的状态容器；为 null 时楼中楼只显示预览
+  final ReplyThreadStore? threadStore;
+
   static final _voteRegExp = RegExp(r"^\{vote:\d+?\}$");
   static final _timeRegExp = RegExp(r'^(?:\d+[:：])?\d+[:：]\d+$');
   static bool enableWordRe = Pref.enableWordRe;
   static int? replyLengthLimit = Pref.replyLengthLimit;
 
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = ColorScheme.of(context);
+  bool get _isCard => replyLevel != 0;
 
-    void showMore() => showModalBottomSheet(
+  void _showMorePanel(
+    BuildContext context,
+    ReplyInfo item,
+    VoidCallback onDelete, {
+    required bool isSubReply,
+  }) {
+    showModalBottomSheet(
       context: context,
       useSafeArea: true,
       isScrollControlled: true,
       constraints: BoxConstraints(
         maxWidth: min(640, context.mediaQueryShortestSide),
       ),
-      builder: (context) {
-        return morePanel(
-          context: context,
-          item: replyItem,
-          onDelete: () => onDelete?.call(replyItem, null),
-          isSubReply: false,
-        );
-      },
+      builder: (context) => morePanel(
+        context: context,
+        item: item,
+        onDelete: onDelete,
+        isSubReply: isSubReply,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = ColorScheme.of(context);
+    final palette = ReplyPalette.of(context);
+    final ReplyThreadState? state = replyLevel == 1
+        ? threadStore?.of(replyItem)
+        : null;
+
+    void showMore() => _showMorePanel(
+      context,
+      replyItem,
+      () => onDelete?.call(replyItem, null),
+      isSubReply: false,
     );
 
-    Widget child = Padding(
-      padding: const .fromLTRB(12, 14, 8, 5),
-      child: _buildContent(context, colorScheme),
+    Widget child;
+    if (state != null) {
+      child = ListenableBuilder(
+        listenable: state,
+        builder: (context, _) => state.collapsed
+            ? _buildCollapsed(context, palette, state)
+            : _buildExpanded(context, colorScheme, palette, state),
+      );
+    } else {
+      child = _buildExpanded(context, colorScheme, palette, null);
+    }
+
+    final replyReply = this.replyReply;
+    child = GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      // 没有原地展开能力的场景（如「我的评论」）保持原来的点按行为
+      onTap: state == null && replyReply != null
+          ? () => replyReply(replyItem, null)
+          : null,
+      onLongPress: showMore,
+      onSecondaryTap: PlatformUtils.isMobile ? null : showMore,
+      child: child,
     );
-    if (needDivider) {
-      child = Column(
-        mainAxisSize: .min,
+
+    if (!_isCard) {
+      return child;
+    }
+
+    return Padding(
+      padding: ReplyStyle.cardMargin,
+      child: DecoratedBox(
+        decoration: ShapeDecoration(
+          color: palette.card,
+          shape: ReplyStyle.cardShape,
+        ),
+        child: state == null
+            ? child
+            : AnimatedSize(
+                duration: const Duration(milliseconds: 220),
+                curve: Curves.easeOutCubic,
+                alignment: Alignment.topCenter,
+                child: child,
+              ),
+      ),
+    );
+  }
+
+  /// 只读赞数（已赞时用主题色实心心形）
+  static Widget? _buildLike(
+    ReplyInfo item,
+    ColorScheme colorScheme,
+    ReplyPalette palette, {
+    bool small = false,
+  }) {
+    final like = item.like.toInt();
+    if (like <= 0) {
+      return null;
+    }
+    final liked = item.replyControl.action == Int64.ONE;
+    final double fontSize = small ? 11.5 : 12.5;
+    return Row(
+      spacing: 3,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(
+          liked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+          size: fontSize + 1.5,
+          color: liked ? colorScheme.primary : palette.tertiaryLabel,
+        ),
+        Text(
+          NumUtils.numFormat(like),
+          style: TextStyle(
+            fontSize: fontSize,
+            height: 1.2,
+            color: liked ? colorScheme.primary : palette.secondaryLabel,
+          ),
+        ),
+      ],
+    );
+  }
+
+  static Widget _textAction(
+    String text,
+    TextStyle style,
+    VoidCallback? onTap, {
+    IconData? icon,
+  }) {
+    Widget child = Text(text, style: style);
+    if (icon != null) {
+      child = Row(
+        spacing: 2,
+        mainAxisSize: MainAxisSize.min,
         children: [
           child,
-          Divider(
-            indent: 55,
-            endIndent: 15,
-            height: 0.3,
-            color: colorScheme.outline.withValues(alpha: 0.08),
-          ),
+          Icon(icon, size: (style.fontSize ?? 12.5) + 3, color: style.color),
         ],
       );
     }
-    return Material(
-      type: MaterialType.transparency,
-      child: InkWell(
-        onTap: () => replyReply?.call(replyItem, null),
-        onLongPress: showMore,
-        onSecondaryTap: PlatformUtils.isMobile ? null : showMore,
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 5),
         child: child,
       ),
     );
   }
 
-  Widget _buildHeader(BuildContext context, ColorScheme colorScheme) {
+  /// 整串折叠后的单行
+  Widget _buildCollapsed(
+    BuildContext context,
+    ReplyPalette palette,
+    ReplyThreadState state,
+  ) {
     final member = replyItem.member;
-    Widget header = GestureDetector(
+    final count = replyItem.count.toInt();
+    final snippet = replyItem.content.message.replaceAll('\n', ' ');
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTap: () {
         feedBack();
-        Get.toNamed('/member?mid=${replyItem.mid}');
+        state.toggleCollapsed();
       },
-      child: TranslucentRow(
-        spacing: 12,
-        extraWidth: 46,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 10, 12, 10),
+        child: Row(
+          children: [
+            NetworkImgLayer(
+              src: member.face,
+              width: 22,
+              height: 22,
+              type: .avatar,
+            ),
+            const SizedBox(width: 8),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 120),
+              child: Text(
+                member.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: ReplyStyle.subName.copyWith(color: palette.label),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                snippet,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: ReplyStyle.meta.copyWith(
+                  fontSize: 13,
+                  color: palette.secondaryLabel,
+                ),
+              ),
+            ),
+            if (count > 0) ...[
+              const SizedBox(width: 8),
+              Text(
+                '$count 条回复',
+                style: ReplyStyle.meta.copyWith(color: palette.tertiaryLabel),
+              ),
+            ],
+            const SizedBox(width: 2),
+            Icon(
+              Icons.expand_more_rounded,
+              size: 18,
+              color: palette.tertiaryLabel,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildExpanded(
+    BuildContext context,
+    ColorScheme colorScheme,
+    ReplyPalette palette,
+    ReplyThreadState? state,
+  ) {
+    final replyControl = replyItem.replyControl;
+    final footer = _buildFooter(context, colorScheme, palette, replyControl);
+    final hasThread = replyLevel == 1 && replyItem.count > Int64.ZERO;
+    final replyReply = this.replyReply;
+
+    VoidCallback? onShowMore;
+    if (replyLevel == 1) {
+      if (state != null) {
+        onShowMore = state.expandRootText;
+      } else if (replyReply != null) {
+        onShowMore = () => replyReply(replyItem, null);
+      }
+    }
+
+    return Padding(
+      padding: _isCard
+          ? ReplyStyle.cardPadding
+          : const EdgeInsets.fromLTRB(12, 12, 12, 10),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          PendantAvatar(
+          _buildHeader(context, colorScheme, palette, state),
+          Padding(
+            padding: const EdgeInsets.only(
+              left: ReplyStyle.contentIndent,
+              top: 4,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (replyControl.hasVoteOption())
+                  _buildVoteOption(
+                    colorScheme,
+                    palette,
+                    replyControl.voteOption,
+                  ),
+                TextMore.rich(
+                  primary: colorScheme.primary,
+                  style: ReplyStyle.content.copyWith(color: palette.label),
+                  maxLines:
+                      replyLevel == 1 && !(state?.rootTextExpanded ?? false)
+                      ? replyLengthLimit
+                      : null,
+                  onShowMore: onShowMore,
+                  TextSpan(
+                    children: [
+                      if (replyControl.isUpTop) ...[
+                        const WidgetSpan(
+                          alignment: .middle,
+                          child: PBadge(
+                            text: 'TOP',
+                            size: .small,
+                            isStack: false,
+                            type: .line_primary,
+                            fontSize: 9,
+                            textScaleFactor: 1,
+                          ),
+                        ),
+                        const TextSpan(text: ' '),
+                      ],
+                      _buildMessage(
+                        context,
+                        colorScheme,
+                        replyControl.showTranslation
+                            ? replyItem.translatedContent
+                            : replyItem.content,
+                        replyControl,
+                      ),
+                    ],
+                  ),
+                ),
+                if (replyItem.content.pictures.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: ImageGridView(
+                      picArr: replyItem.content.pictures
+                          .map(
+                            (item) => ImageModel(
+                              width: item.imgWidth,
+                              height: item.imgHeight,
+                              url: item.imgSrc,
+                            ),
+                          )
+                          .toList(),
+                      onViewImage: onViewImage,
+                    ),
+                  ),
+                ?footer,
+              ],
+            ),
+          ),
+          if (hasThread) _buildThread(context, colorScheme, palette, state),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHeader(
+    BuildContext context,
+    ColorScheme colorScheme,
+    ReplyPalette palette,
+    ReplyThreadState? state,
+  ) {
+    final member = replyItem.member;
+    final replyControl = replyItem.replyControl;
+    final isVip = member.vipStatus > 0 && member.vipType == 2;
+
+    void toMember() {
+      feedBack();
+      Get.toNamed('/member?mid=${replyItem.mid}');
+    }
+
+    final time = replyLevel == 0
+        ? DateFormatUtils.format(
+            replyItem.ctime.toInt(),
+            format: DateFormatUtils.longFormatDs,
+          )
+        : DateFormatUtils.dateFormat(replyItem.ctime.toInt());
+    final meta = replyControl.hasLocation()
+        ? '$time · ${replyControl.location}'
+        : time;
+    final like = _buildLike(replyItem, colorScheme, palette);
+
+    Widget header = Row(
+      children: [
+        GestureDetector(
+          onTap: toMember,
+          child: PendantAvatar(
             member.face,
-            size: 34,
-            badgeSize: 14,
+            size: ReplyStyle.avatarSize,
+            badgeSize: 12,
             vipStatus: member.vipStatus.toInt(),
             officialType: member.officialVerifyType.toInt(),
             pendantImage: member.hasGarbPendantImage()
                 ? member.garbPendantImage
                 : null,
           ),
-          Flexible(
-            child: Column(
-              mainAxisSize: .min,
-              crossAxisAlignment: .start,
-              children: [
-                Row(
-                  spacing: 6,
-                  mainAxisSize: .min,
-                  children: [
-                    Flexible(
+        ),
+        const SizedBox(width: ReplyStyle.avatarGap),
+        Expanded(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                spacing: 5,
+                children: [
+                  Flexible(
+                    child: GestureDetector(
+                      onTap: toMember,
                       child: Text(
                         member.name,
                         maxLines: 1,
-                        overflow: .ellipsis,
-                        style: TextStyle(
-                          color: (member.vipStatus > 0 && member.vipType == 2)
-                              ? colorScheme.vipColor
-                              : colorScheme.outline,
-                          fontSize: 13,
+                        overflow: TextOverflow.ellipsis,
+                        style: ReplyStyle.name.copyWith(
+                          color: isVip ? colorScheme.vipColor : palette.label,
                         ),
                       ),
-                    ),
-                    BiliUtils.levelPicture(
-                      member.level.toInt(),
-                      isSeniorMember: member.isSeniorMember == 1,
-                      height: 11,
-                    ),
-                    if (replyItem.mid == upMid)
-                      const PBadge(
-                        text: 'UP',
-                        size: .small,
-                        isStack: false,
-                        fontSize: 9,
-                      )
-                    else if (GlobalData().showMedal &&
-                        member.hasFansMedalLevel())
-                      MedalWidget(
-                        medalName: member.fansMedalName,
-                        level: member.fansMedalLevel.toInt(),
-                        backgroundColor: DmUtils.decimalToColor(
-                          member.fansMedalColor.toInt(),
-                        ),
-                        nameColor: DmUtils.decimalToColor(
-                          member.fansMedalColorName.toInt(),
-                        ),
-                        padding: const .symmetric(horizontal: 6, vertical: 1.5),
-                      ),
-                  ],
-                ),
-                Row(
-                  mainAxisSize: .min,
-                  children: [
-                    Text(
-                      replyLevel == 0
-                          ? DateFormatUtils.format(
-                              replyItem.ctime.toInt(),
-                              format: DateFormatUtils.longFormatDs,
-                            )
-                          : DateFormatUtils.dateFormat(replyItem.ctime.toInt()),
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: colorScheme.outline,
-                      ),
-                    ),
-                    if (replyItem.replyControl.hasLocation())
-                      Text(
-                        ' • ${replyItem.replyControl.location}',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: colorScheme.outline,
-                        ),
-                      ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-    if (PendantAvatar.showDecorate) {
-      final garb = replyItem.memberV2.garb;
-      if (garb.hasCardImage()) {
-        const double height = 38.0;
-        return Stack(
-          clipBehavior: .none,
-          children: [
-            Positioned(
-              top: 0,
-              right: 0,
-              height: height,
-              child: CachedNetworkImage(
-                height: height,
-                memCacheHeight: height.cacheSize(context),
-                imageUrl: ImageUtils.safeThumbnailUrl(garb.cardImage),
-                placeholder: (_, _) => const SizedBox.shrink(),
-              ),
-            ),
-            if (garb.hasCardNumber())
-              Positioned(
-                top: 0,
-                right: 0,
-                height: height,
-                child: Center(
-                  child: Text(
-                    '${garb.fanNumPrefix}\n${garb.cardNumber}',
-                    style: TextStyle(
-                      fontSize: 8,
-                      fontFamily: Assets.digitalNum,
-                      color: ColourUtils.parseColor(garb.cardFanColor),
                     ),
                   ),
-                ),
+                  BiliUtils.levelPicture(
+                    member.level.toInt(),
+                    isSeniorMember: member.isSeniorMember == 1,
+                    height: 10,
+                  ),
+                  if (replyItem.mid == upMid)
+                    const PBadge(
+                      text: 'UP',
+                      size: .small,
+                      isStack: false,
+                      fontSize: 9,
+                    )
+                  else if (GlobalData().showMedal &&
+                      member.hasFansMedalLevel())
+                    MedalWidget(
+                      medalName: member.fansMedalName,
+                      level: member.fansMedalLevel.toInt(),
+                      backgroundColor: DmUtils.decimalToColor(
+                        member.fansMedalColor.toInt(),
+                      ),
+                      nameColor: DmUtils.decimalToColor(
+                        member.fansMedalColorName.toInt(),
+                      ),
+                      padding: const .symmetric(horizontal: 6, vertical: 1.5),
+                    ),
+                ],
               ),
-            Padding(
-              padding: const .only(right: 80),
-              child: header,
-            ),
-          ],
-        );
-      }
+              const SizedBox(height: 3),
+              Text(
+                meta,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: ReplyStyle.meta.copyWith(color: palette.secondaryLabel),
+              ),
+            ],
+          ),
+        ),
+        if (like != null) ...[const SizedBox(width: 8), like],
+      ],
+    );
+    if (state != null) {
+      // 点头部空白处整串折叠（头像/昵称仍进入空间）
+      header = GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () {
+          feedBack();
+          state.toggleCollapsed();
+        },
+        child: header,
+      );
     }
     return header;
   }
 
   Widget _buildVoteOption(
     ColorScheme colorScheme,
+    ReplyPalette palette,
     ReplyControl_VoteOption voteOption,
   ) {
-    return Text.rich(
-      TextSpan(
-        children: [
-          switch (voteOption.labelKind) {
-            .RED => TextSpan(
-              text: '红方  ',
-              style: TextStyle(color: colorScheme.vipColor),
-            ),
-            .BLUE => TextSpan(
-              text: '蓝方  ',
-              style: TextStyle(color: colorScheme.blue),
-            ),
-            _ => TextSpan(
-              text: '投票  ',
-              style: TextStyle(color: colorScheme.outline),
-            ),
-          },
-          TextSpan(text: voteOption.desc),
-        ],
-      ),
-      style: TextStyle(
-        height: 1.75,
-        fontSize: 12,
-        color: colorScheme.onSurfaceVariant,
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 2),
+      child: Text.rich(
+        TextSpan(
+          children: [
+            switch (voteOption.labelKind) {
+              .RED => TextSpan(
+                text: '红方  ',
+                style: TextStyle(color: colorScheme.vipColor),
+              ),
+              .BLUE => TextSpan(
+                text: '蓝方  ',
+                style: TextStyle(color: colorScheme.blue),
+              ),
+              _ => TextSpan(
+                text: '投票  ',
+                style: TextStyle(color: palette.tertiaryLabel),
+              ),
+            },
+            TextSpan(text: voteOption.desc),
+          ],
+        ),
+        style: ReplyStyle.meta.copyWith(
+          fontSize: 12.5,
+          height: 1.5,
+          color: palette.secondaryLabel,
+        ),
       ),
     );
   }
 
-  Widget _buildContent(BuildContext context, ColorScheme colorScheme) {
-    final replyControl = replyItem.replyControl;
-    final padding = EdgeInsets.only(left: replyLevel == 0 ? 6 : 45, right: 6);
-    return Column(
-      mainAxisSize: .min,
-      crossAxisAlignment: .start,
-      children: [
-        _buildHeader(context, colorScheme),
-        const SizedBox(height: 10),
-        if (replyControl.hasVoteOption())
-          Padding(
-            padding: padding,
-            child: _buildVoteOption(colorScheme, replyControl.voteOption),
-          ),
+  /// 翻译 / 卡片标签 / 查看对话（只读相关的操作）
+  Widget? _buildFooter(
+    BuildContext context,
+    ColorScheme colorScheme,
+    ReplyPalette palette,
+    ReplyControl replyControl,
+  ) {
+    final textStyle = ReplyStyle.action.copyWith(color: palette.secondaryLabel);
+    final children = <Widget>[];
+
+    if (replyControl.translationSwitch ==
+        .TRANSLATION_SWITCH_SHOW_TRANSLATION) {
+      children.add(
+        _buildTranslateBtn(context, colorScheme, replyControl, textStyle),
+      );
+    } else if (replyControl.cardLabels.isNotEmpty) {
+      children.add(
         Padding(
-          padding: padding,
-          child: TextMore.rich(
-            primary: colorScheme.primary,
-            style: const TextStyle(height: 1.75, fontSize: 14),
-            maxLines: replyLevel == 1 ? replyLengthLimit : null,
-            TextSpan(
-              children: [
-                if (replyControl.isUpTop) ...[
-                  const WidgetSpan(
-                    alignment: .middle,
-                    child: PBadge(
-                      text: 'TOP',
-                      size: .small,
-                      isStack: false,
-                      type: .line_primary,
-                      fontSize: 9,
-                      textScaleFactor: 1,
-                    ),
-                  ),
-                  const TextSpan(text: ' '),
-                ],
-                _buildMessage(
-                  context,
-                  colorScheme,
-                  replyControl.showTranslation
-                      ? replyItem.translatedContent
-                      : replyItem.content,
-                  replyControl,
-                ),
-              ],
-            ),
+          padding: const EdgeInsets.symmetric(vertical: 5),
+          child: Text(
+            replyControl.cardLabels.map((e) => e.textContent).join('  '),
+            style: textStyle.copyWith(color: colorScheme.secondary),
           ),
         ),
-        if (replyItem.content.pictures.isNotEmpty) ...[
-          Padding(
-            padding: padding,
-            child: ImageGridView(
-              picArr: replyItem.content.pictures
-                  .map(
-                    (item) => ImageModel(
-                      width: item.imgWidth,
-                      height: item.imgHeight,
-                      url: item.imgSrc,
-                    ),
-                  )
-                  .toList(),
-              onViewImage: onViewImage,
-            ),
-          ),
-          const SizedBox(height: 4),
-        ],
-        if (replyLevel != 0) ...[
-          const SizedBox(height: 4),
-          buttonAction(context, colorScheme, replyControl),
-        ],
-        if (replyLevel == 1 && replyItem.count > Int64.ZERO) ...[
-          Padding(
-            padding: const EdgeInsets.only(top: 5, bottom: 12),
-            child: replyItemRow(context, colorScheme, replyItem.replies),
-          ),
-        ],
-      ],
+      );
+    }
+
+    final linkStyle = textStyle.copyWith(color: colorScheme.primary);
+    if (replyLevel == 2 && needDivider && replyItem.id != replyItem.dialog) {
+      children.add(_textAction('查看对话', linkStyle, showDialogue));
+    } else if (replyLevel == 3 && replyItem.parent != replyItem.root) {
+      children.add(_textAction('跳转回复', linkStyle, jumpToDialogue));
+    }
+
+    if (children.isEmpty) {
+      return null;
+    }
+    return Padding(
+      padding: const EdgeInsets.only(top: 2),
+      child: Wrap(
+        spacing: 16,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: children,
+      ),
     );
   }
 
@@ -410,57 +631,56 @@ class ReplyItemGrpc extends StatelessWidget {
     ColorScheme colorScheme,
     ReplyControl replyControl,
     TextStyle textStyle,
-    ButtonStyle buttonStyle,
   ) {
     late bool isProcessing = false;
     final color = replyControl.showTranslation
         ? colorScheme.primary
-        : colorScheme.outline.withValues(alpha: 0.8);
-    return SizedBox(
-      height: 32,
-      child: TextButton(
-        style: buttonStyle,
-        onPressed: () async {
-          if (replyControl.showTranslation) {
-            replyControl.showTranslation = false;
-            (context as Element).markNeedsBuild();
-          } else {
-            if (isProcessing) {
-              return;
-            }
-            if (replyItem.hasTranslatedContent()) {
-              replyControl.showTranslation = true;
-              (context as Element).markNeedsBuild();
-              return;
-            }
-            isProcessing = true;
-            final res = await ReplyGrpc.translateReply(
-              type: replyItem.type,
-              oid: replyItem.oid,
-              rpid: replyItem.id,
-            );
-            if (res case Success(:final response)) {
-              final item = response.translatedReplies[replyItem.id];
-              if (item != null && item.hasTranslatedContent()) {
-                replyControl.showTranslation = true;
-                replyItem.translatedContent = item.translatedContent;
-                if (context.mounted) {
-                  (context as Element).markNeedsBuild();
-                }
-              } else {
-                SmartDialog.showToast('翻译结果为空');
-              }
-            } else if (res case Error(:final errMsg)) {
-              SmartDialog.showToast('翻译失败: $errMsg');
-            }
-            isProcessing = false;
+        : textStyle.color;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () async {
+        if (replyControl.showTranslation) {
+          replyControl.showTranslation = false;
+          (context as Element).markNeedsBuild();
+        } else {
+          if (isProcessing) {
+            return;
           }
-        },
+          if (replyItem.hasTranslatedContent()) {
+            replyControl.showTranslation = true;
+            (context as Element).markNeedsBuild();
+            return;
+          }
+          isProcessing = true;
+          final res = await ReplyGrpc.translateReply(
+            type: replyItem.type,
+            oid: replyItem.oid,
+            rpid: replyItem.id,
+          );
+          if (res case Success(:final response)) {
+            final item = response.translatedReplies[replyItem.id];
+            if (item != null && item.hasTranslatedContent()) {
+              replyControl.showTranslation = true;
+              replyItem.translatedContent = item.translatedContent;
+              if (context.mounted) {
+                (context as Element).markNeedsBuild();
+              }
+            } else {
+              SmartDialog.showToast('翻译结果为空');
+            }
+          } else if (res case Error(:final errMsg)) {
+            SmartDialog.showToast('翻译失败: $errMsg');
+          }
+          isProcessing = false;
+        }
+      },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 5),
         child: Row(
           spacing: 3,
-          mainAxisSize: .min,
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.translate, size: 16, color: color),
+            Icon(Icons.translate, size: 14, color: color),
             Text(
               replyControl.showTranslation ? '原文' : '翻译',
               style: textStyle.copyWith(color: color),
@@ -471,246 +691,255 @@ class ReplyItemGrpc extends StatelessWidget {
     );
   }
 
-  Widget buttonAction(
+  /// 楼中楼（Reddit 式）：左侧竖线位于主评论头像正下方
+  Widget _buildThread(
     BuildContext context,
     ColorScheme colorScheme,
-    ReplyControl replyControl,
+    ReplyPalette palette,
+    ReplyThreadState? state,
   ) {
-    final textStyle = TextStyle(
-      height: 1,
-      fontSize: 12,
-      fontWeight: .normal,
-      color: colorScheme.outline,
+    final preview = replyItem.replies;
+    final List<ReplyInfo>? loaded = state?.loaded;
+    final bool showAll = state != null && state.showAll && loaded != null;
+    final List<ReplyInfo> items = showAll ? loaded! : preview;
+    final int total = replyItem.count.toInt();
+    final linkStyle = ReplyStyle.action.copyWith(color: colorScheme.primary);
+    final mutedStyle = ReplyStyle.action.copyWith(
+      color: palette.secondaryLabel,
     );
-    const buttonStyle = ButtonStyle(
-      visualDensity: .compact,
-      tapTargetSize: .shrinkWrap,
-      padding: WidgetStatePropertyAll(.zero),
-    );
+    final upPrefix = replyItem.replyControl.upReply ? 'UP主等人 · ' : '';
 
-    Widget? dialogBtn;
-    if (replyLevel == 2 && needDivider && replyItem.id != replyItem.dialog) {
-      dialogBtn = SizedBox(
-        height: 32,
-        child: TextButton(
-          onPressed: showDialogue,
-          style: buttonStyle,
-          child: Text('查看对话', style: textStyle),
-        ),
+    Widget? footer;
+    if (state == null) {
+      if (total > items.length) {
+        final replyReply = this.replyReply;
+        footer = _textAction(
+          '$upPrefix共$total条回复',
+          linkStyle,
+          replyReply == null ? null : () => replyReply(replyItem, null),
+          icon: Icons.chevron_right_rounded,
+        );
+      }
+    } else if (state.loading) {
+      footer = _textAction('加载中…', mutedStyle, null);
+    } else if (showAll ? !state.isEnd : total > items.length) {
+      final remaining = total - items.length;
+      footer = _textAction(
+        state.hasError
+            ? '加载失败，点击重试'
+            : remaining > 0
+            ? '$upPrefix展开 $remaining 条回复'
+            : '展开更多回复',
+        linkStyle,
+        () => state.expandReplies(replyItem),
+        icon: Icons.expand_more_rounded,
       );
-    } else if (replyLevel == 3 && replyItem.parent != replyItem.root) {
-      dialogBtn = SizedBox(
-        height: 32,
-        child: TextButton(
-          onPressed: jumpToDialogue,
-          style: buttonStyle,
-          child: Text('跳转回复', style: textStyle),
-        ),
+    } else if (showAll && items.length > preview.length) {
+      footer = _textAction(
+        '收起',
+        mutedStyle,
+        state.collapseReplies,
+        icon: Icons.expand_less_rounded,
       );
     }
-    return Row(
-      children: [
-        const SizedBox(width: 36),
-        SizedBox(
-          height: 32,
-          child: TextButton(
-            style: buttonStyle,
-            onPressed: () {
-              feedBack();
-              onReply?.call(replyItem);
-            },
-            child: Row(
-              spacing: 3,
-              mainAxisSize: .min,
+
+    if (items.isEmpty && footer == null) {
+      return const SizedBox.shrink();
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Stack(
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(left: ReplyStyle.contentIndent),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(
-                  Icons.reply,
-                  size: 18,
-                  color: colorScheme.outline.withValues(alpha: 0.8),
-                ),
-                Text('回复', style: textStyle),
+                for (final child in items)
+                  _buildSubReply(context, colorScheme, palette, child, state),
+                ?footer,
               ],
             ),
           ),
-        ),
-        const SizedBox(width: 2),
-        if (replyControl.translationSwitch ==
-            .TRANSLATION_SWITCH_SHOW_TRANSLATION) ...[
-          _buildTranslateBtn(
-            context,
-            colorScheme,
-            replyControl,
-            textStyle,
-            buttonStyle,
+          Positioned(
+            left: (ReplyStyle.avatarSize - 2) / 2,
+            top: 4,
+            bottom: 4,
+            width: 2,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: palette.thread,
+                borderRadius: const BorderRadius.all(Radius.circular(1)),
+              ),
+            ),
           ),
-          const SizedBox(width: 2),
-        ] else if (replyControl.cardLabels.isNotEmpty) ...[
-          Text(
-            dialogBtn != null
-                ? replyControl.cardLabels.first.textContent
-                : replyControl.cardLabels.map((e) => e.textContent).join('  '),
-            style: textStyle.copyWith(color: colorScheme.secondary),
-          ),
-          const SizedBox(width: 2),
+          if (state != null)
+            Positioned(
+              left: 0,
+              top: 0,
+              bottom: 0,
+              width: ReplyStyle.contentIndent - 4,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () {
+                  feedBack();
+                  state.toggleCollapsed();
+                },
+              ),
+            ),
         ],
-        ?dialogBtn,
-        const Spacer(),
-        ZanButtonGrpc(replyItem: replyItem),
-        const SizedBox(width: 5),
-      ],
+      ),
     );
   }
 
-  Widget replyItemRow(
+  Widget _buildSubReply(
     BuildContext context,
     ColorScheme colorScheme,
-    List<ReplyInfo> replies,
+    ReplyPalette palette,
+    ReplyInfo child,
+    ReplyThreadState? state,
   ) {
-    final extraRow = replies.length < replyItem.count.toInt();
-    final length = replies.length + (extraRow ? 1 : 0);
-    return Padding(
-      padding: const .only(left: 42, right: 4),
-      child: Material(
-        animationDuration: .zero,
-        color: colorScheme.onInverseSurface,
-        borderRadius: const .all(.circular(6)),
+    final member = child.member;
+    final isVip = member.vipStatus > 0 && member.vipType == 2;
+    final like = _buildLike(child, colorScheme, palette, small: true);
+    final replyReply = this.replyReply;
+
+    void toMember() {
+      feedBack();
+      Get.toNamed('/member?mid=${child.mid}');
+    }
+
+    void showMore() => _showMorePanel(
+      context,
+      child,
+      () => _onDeleteSub(child, state),
+      isSubReply: true,
+    );
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      // 打开完整楼中楼面板并定位到这条（可查看对话、切换排序）
+      onTap: replyReply == null
+          ? null
+          : () => replyReply(replyItem, child.id.toInt()),
+      onLongPress: showMore,
+      onSecondaryTap: PlatformUtils.isMobile ? null : showMore,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 5),
         child: Column(
-          crossAxisAlignment: .stretch,
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (replies.isNotEmpty)
-              ...replies.mapIndexed((index, childReply) {
-                final EdgeInsets padding;
-                BorderRadius? borderRadius;
-                if (length == 1) {
-                  padding = const .fromLTRB(8, 5, 8, 5);
-                  borderRadius = const .all(.circular(6));
-                } else {
-                  if (index == 0) {
-                    padding = const .fromLTRB(8, 8, 8, 4);
-                    borderRadius = const .vertical(top: .circular(6));
-                  } else if (index == length - 1) {
-                    padding = const .fromLTRB(8, 4, 8, 8);
-                    borderRadius = const .vertical(bottom: .circular(6));
-                  } else {
-                    padding = const .fromLTRB(8, 4, 8, 4);
-                  }
-                }
-                void showMore() => showModalBottomSheet(
-                  context: context,
-                  useSafeArea: true,
-                  isScrollControlled: true,
-                  constraints: BoxConstraints(
-                    maxWidth: min(640, context.mediaQueryShortestSide),
+            Row(
+              children: [
+                GestureDetector(
+                  onTap: toMember,
+                  child: NetworkImgLayer(
+                    src: member.face,
+                    width: ReplyStyle.subAvatarSize,
+                    height: ReplyStyle.subAvatarSize,
+                    type: .avatar,
                   ),
-                  builder: (context) {
-                    return morePanel(
-                      context: context,
-                      item: childReply,
-                      onDelete: () => onDelete?.call(replyItem, index),
-                      isSubReply: true,
-                    );
-                  },
-                );
-                return InkWell(
-                  borderRadius: borderRadius,
-                  onTap: () =>
-                      replyReply?.call(replyItem, childReply.id.toInt()),
-                  onLongPress: showMore,
-                  onSecondaryTap: PlatformUtils.isMobile ? null : showMore,
-                  child: Padding(
-                    padding: padding,
-                    child: TextEllipsis.rich(
-                      style: TextStyle(
-                        height: 1.6,
-                        fontSize: 14,
-                        color: colorScheme.onSurface.withValues(alpha: 0.85),
-                      ),
+                ),
+                const SizedBox(width: ReplyStyle.subAvatarGap),
+                Flexible(
+                  child: GestureDetector(
+                    onTap: toMember,
+                    child: Text(
+                      member.name,
+                      maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      maxLines: 2,
-                      TextSpan(
-                        children: [
-                          TextSpan(
-                            text: childReply.member.name,
-                            style: TextStyle(color: colorScheme.primary),
-                            recognizer: NoDeadlineTapGestureRecognizer()
-                              ..onTap = () {
-                                feedBack();
-                                Get.toNamed(
-                                  '/member?mid=${childReply.member.mid}',
-                                );
-                              },
-                          ),
-                          if (childReply.mid == upMid) ...[
-                            const TextSpan(text: ' '),
-                            const WidgetSpan(
-                              alignment: .middle,
-                              child: PBadge(
-                                text: 'UP',
-                                size: .small,
-                                isStack: false,
-                                fontSize: 9,
-                                textScaleFactor: 1,
-                              ),
-                            ),
-                            const TextSpan(text: ' '),
-                          ],
-                          TextSpan(
-                            text: childReply.root == childReply.parent
-                                ? ': '
-                                : childReply.mid == upMid
-                                ? ''
-                                : ' ',
-                          ),
-                          _buildMessage(
-                            context,
-                            colorScheme,
-                            childReply.content,
-                            childReply.replyControl,
-                          ),
-                        ],
+                      style: ReplyStyle.subName.copyWith(
+                        color: isVip ? colorScheme.vipColor : palette.label,
                       ),
                     ),
                   ),
-                );
-              }),
-            if (extraRow)
-              InkWell(
-                onTap: () => replyReply?.call(replyItem, null),
-                borderRadius: length == 1
-                    ? const .all(.circular(6))
-                    : const .vertical(bottom: .circular(6)),
-                child: Padding(
-                  padding: length == 1
-                      ? const .fromLTRB(8, 6, 8, 6)
-                      : const .fromLTRB(8, 5, 8, 8),
-                  child: Text.rich(
-                    TextSpan(
-                      style: const TextStyle(fontSize: 12),
-                      children: [
-                        if (replyItem.replyControl.upReply)
-                          TextSpan(
-                            text: 'UP主等人 ',
-                            style: TextStyle(
-                              color: colorScheme.onSurface.withValues(
-                                alpha: 0.85,
-                              ),
-                            ),
-                          ),
-                        TextSpan(
-                          text: '共${replyItem.count}条回复',
-                          style: TextStyle(
-                            color: colorScheme.primary,
-                          ),
-                        ),
-                      ],
-                    ),
+                ),
+                if (child.mid == upMid) ...[
+                  const SizedBox(width: 4),
+                  const PBadge(
+                    text: 'UP',
+                    size: .small,
+                    isStack: false,
+                    fontSize: 9,
+                    textScaleFactor: 1,
                   ),
+                ],
+                const SizedBox(width: 6),
+                Text(
+                  DateFormatUtils.dateFormat(child.ctime.toInt()),
+                  style: ReplyStyle.meta.copyWith(
+                    fontSize: 11,
+                    color: palette.tertiaryLabel,
+                  ),
+                ),
+                const Spacer(),
+                ?like,
+              ],
+            ),
+            Padding(
+              padding: const EdgeInsets.only(
+                left: ReplyStyle.subContentIndent,
+                top: 2,
+              ),
+              child: TextMore.rich(
+                primary: colorScheme.primary,
+                style: ReplyStyle.subContent.copyWith(color: palette.label),
+                maxLines: state != null && state.isTextExpanded(child.id)
+                    ? null
+                    : replyLengthLimit,
+                onShowMore: state == null
+                    ? null
+                    : () => state.expandText(child.id),
+                TextSpan(
+                  children: [
+                    _buildMessage(
+                      context,
+                      colorScheme,
+                      child.content,
+                      child.replyControl,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            if (child.content.pictures.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(
+                  left: ReplyStyle.subContentIndent,
+                  top: 4,
+                ),
+                child: ImageGridView(
+                  picArr: child.content.pictures
+                      .map(
+                        (item) => ImageModel(
+                          width: item.imgWidth,
+                          height: item.imgHeight,
+                          url: item.imgSrc,
+                        ),
+                      )
+                      .toList(),
+                  onViewImage: onViewImage,
                 ),
               ),
           ],
         ),
       ),
     );
+  }
+
+  void _onDeleteSub(ReplyInfo child, ReplyThreadState? state) {
+    state?.removeLoaded(child.id);
+    final index = replyItem.replies.indexWhere((item) => item.id == child.id);
+    if (index != -1) {
+      // 由列表 controller 从预览中移除并刷新
+      onDelete?.call(replyItem, index);
+    } else {
+      replyItem.count -= Int64.ONE;
+    }
+    state?.notifyChanged();
   }
 
   InlineSpan _buildMessage(

@@ -188,6 +188,7 @@ mixin CommonDynPageMixin<T extends StatefulWidget>
                       controller.onRemove(index, item, subIndex),
                   upMid: controller.upMid,
                   onViewImage: hideFab,
+                  threadStore: controller.threadStore,
                   onCheckReply: controller.onCheckReply,
                   onToggleTop: (item) => controller.onToggleTop(
                     item,

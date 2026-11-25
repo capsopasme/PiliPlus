@@ -4,17 +4,15 @@ import 'package:PiliPlus/common/style.dart';
 import 'package:PiliPlus/common/widgets/flutter/refresh_indicator.dart';
 import 'package:PiliPlus/common/widgets/loading_widget/http_error.dart';
 import 'package:PiliPlus/common/widgets/scaffold/mini_scaffold.dart';
-import 'package:PiliPlus/common/widgets/scaffold/simple_scaffold.dart';
 import 'package:PiliPlus/common/widgets/sliver/sliver_floating_header.dart';
 import 'package:PiliPlus/grpc/bilibili/main/community/reply/v1.pb.dart'
     show ReplyInfo;
 import 'package:PiliPlus/http/loading_state.dart';
-import 'package:PiliPlus/pages/common/fab_mixin.dart';
 import 'package:PiliPlus/pages/video/reply/controller.dart';
 import 'package:PiliPlus/pages/video/reply/vote/reply_vote_item.dart';
 import 'package:PiliPlus/pages/video/reply/widgets/reply_item_grpc.dart';
+import 'package:PiliPlus/pages/video/reply/widgets/reply_style.dart';
 import 'package:PiliPlus/pages/video/reply_reply/view.dart';
-import 'package:PiliPlus/utils/feed_back.dart';
 import 'package:easy_debounce/easy_throttle.dart';
 import 'package:get/get.dart';
 import 'package:material_ui/material_ui.dart';
@@ -36,12 +34,9 @@ class VideoReplyPanel extends StatefulWidget {
 }
 
 class _VideoReplyPanelState extends State<VideoReplyPanel>
-    with
-        AutomaticKeepAliveClientMixin,
-        SingleTickerProviderStateMixin,
-        BaseFabMixin,
-        FabMixin {
+    with AutomaticKeepAliveClientMixin {
   late ColorScheme colorScheme;
+  late ReplyPalette palette;
   late VideoReplyController _videoReplyController;
 
   String get heroTag => widget.heroTag;
@@ -62,6 +57,7 @@ class _VideoReplyPanelState extends State<VideoReplyPanel>
   void didChangeDependencies() {
     super.didChangeDependencies();
     colorScheme = ColorScheme.of(context);
+    palette = ReplyPalette.of(context);
     bottom = MediaQuery.viewPaddingOf(context).bottom;
   }
 
@@ -70,78 +66,61 @@ class _VideoReplyPanelState extends State<VideoReplyPanel>
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    return fabAnimWrapper(
+    final secondaryLabel = palette.secondaryLabel;
+    // 不再提供「发表评论」悬浮按钮（只读）
+    return ColoredBox(
+      color: palette.background,
       child: refreshIndicator(
         onRefresh: _videoReplyController.onRefresh,
         isClampingScrollPhysics: widget.isNested,
-        child: ScaffoldLayout(
-          body: CustomScrollView(
-            controller: widget.isNested
-                ? null
-                : _videoReplyController.scrollController,
-            physics: const AlwaysScrollableScrollPhysics(),
-            key: const PageStorageKey(_VideoReplyPanelState),
-            slivers: [
-              SliverFloatingHeaderWidget(
-                backgroundColor: colorScheme.surface,
-                child: Padding(
-                  padding: const .fromLTRB(12, 2.5, 6, 2.5),
-                  child: Obx(() {
-                    final sortType = _videoReplyController.sortType.value;
-                    return Row(
-                      mainAxisAlignment: .spaceBetween,
-                      children: [
-                        Text(
-                          sortType.desc,
-                          style: const TextStyle(fontSize: 13),
+        child: CustomScrollView(
+          controller: widget.isNested
+              ? null
+              : _videoReplyController.scrollController,
+          physics: const AlwaysScrollableScrollPhysics(),
+          key: const PageStorageKey(_VideoReplyPanelState),
+          slivers: [
+            SliverFloatingHeaderWidget(
+              // 半透明悬浮排序栏：只是带 alpha 的纯色，不做实时模糊
+              backgroundColor: palette.background.withValues(alpha: 0.92),
+              child: Padding(
+                padding: const .fromLTRB(16, 4, 8, 4),
+                child: Obx(() {
+                  final sortType = _videoReplyController.sortType.value;
+                  return Row(
+                    mainAxisAlignment: .spaceBetween,
+                    children: [
+                      Text(
+                        sortType.desc,
+                        style: ReplyStyle.action.copyWith(
+                          fontSize: 13,
+                          color: secondaryLabel,
                         ),
-                        TextButton.icon(
-                          style: Style.buttonStyle,
-                          onPressed: _videoReplyController.queryBySort,
-                          icon: Icon(
-                            Icons.sort,
-                            size: 16,
-                            color: colorScheme.secondary,
-                          ),
-                          label: Text(
-                            sortType.descShort,
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: colorScheme.secondary,
-                            ),
+                      ),
+                      TextButton.icon(
+                        style: Style.buttonStyle,
+                        onPressed: _videoReplyController.queryBySort,
+                        icon: Icon(
+                          Icons.swap_vert_rounded,
+                          size: 16,
+                          color: colorScheme.primary,
+                        ),
+                        label: Text(
+                          sortType.descShort,
+                          style: ReplyStyle.action.copyWith(
+                            fontSize: 13,
+                            color: colorScheme.primary,
                           ),
                         ),
-                      ],
-                    );
-                  }),
-                ),
-              ),
-              Obx(() => _buildBody(_videoReplyController.loadingState.value)),
-            ],
-          ),
-          fab: SlideTransition(
-            position: fabAnimation,
-            child: Padding(
-              padding: .only(
-                right: kFloatingActionButtonMargin,
-                bottom: kFloatingActionButtonMargin + bottom,
-              ),
-              child: FloatingActionButton(
-                heroTag: null,
-                onPressed: () {
-                  feedBack();
-                  _videoReplyController.onReply(
-                    null,
-                    oid: _videoReplyController.aid,
-                    replyType: _videoReplyController.videoType.replyType,
-                    mentionItem: _videoReplyController.mentionItem,
+                      ),
+                    ],
                   );
-                },
-                tooltip: '发表评论',
-                child: const Icon(Icons.reply),
+                }),
               ),
             ),
-          ),
+            const SliverToBoxAdapter(child: SizedBox(height: 2)),
+            Obx(() => _buildBody(_videoReplyController.loadingState.value)),
+          ],
         ),
       ),
     );
@@ -181,9 +160,12 @@ class _VideoReplyPanelState extends State<VideoReplyPanel>
                   alignment: .center,
                   margin: .only(bottom: bottom),
                   child: Text(
-                    _videoReplyController.isEnd ? '没有更多了' : '加载中...',
+                    _videoReplyController.isEnd ? '没有更多了' : '加载中…',
                     textAlign: .center,
-                    style: TextStyle(fontSize: 12, color: colorScheme.outline),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: palette.tertiaryLabel,
+                    ),
                   ),
                 );
               } else {
@@ -196,6 +178,7 @@ class _VideoReplyPanelState extends State<VideoReplyPanel>
                       _videoReplyController.onRemove(index, item, subIndex),
                   upMid: _videoReplyController.upMid,
                   getTag: () => heroTag,
+                  threadStore: _videoReplyController.threadStore,
                   onCheckReply: _videoReplyController.onCheckReply,
                   onToggleTop: (item) => _videoReplyController.onToggleTop(
                     item,

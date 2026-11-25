@@ -9,7 +9,7 @@ import 'dart:async' show Completer;
 import 'package:PiliPlus/common/widgets/refresh_layout.dart';
 import 'package:PiliPlus/common/widgets/scroll_behavior.dart';
 import 'package:PiliPlus/common/widgets/scroll_physics.dart'
-    show BouncingScrollPhysicsExt;
+    show BouncingScrollPhysicsExt, useIOSFling;
 import 'package:PiliPlus/utils/platform_utils.dart';
 import 'package:PiliPlus/utils/storage_pref.dart';
 import 'package:extended_nested_scroll_view/refresh.dart';
@@ -550,10 +550,16 @@ class RefreshIndicatorState extends State<RefreshIndicator>
     }
     return ScrollConfiguration(
       behavior: RefreshScrollBehavior(
-        scrollPhysics: RefreshScrollPhysics(
-          parent: const RangeMaintainingScrollPhysics(),
-          onDrag: _onDrag,
-        ),
+        // Android：iOS 惯性曲线 + 边界夹紧（不回弹），下拉刷新仍走 overscroll 通知
+        scrollPhysics: useIOSFling
+            ? RefreshScrollPhysicsIOS(
+                parent: const RangeMaintainingScrollPhysics(),
+                onDrag: _onDrag,
+              )
+            : RefreshScrollPhysics(
+                parent: const RangeMaintainingScrollPhysics(),
+                onDrag: _onDrag,
+              ),
       ),
       child: child,
     );
