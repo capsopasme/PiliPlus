@@ -42,7 +42,7 @@ class ReplyThreadState extends ChangeNotifier {
 
   final Set<Int64> _expandedText = <Int64>{};
 
-  /// 原地加载到的楼中楼（多页累积）
+  /// 原地加载到的楼中楼：预览 + 多页累积（已去重）
   List<ReplyInfo>? loaded;
 
   String? _nextOffset;
@@ -124,7 +124,9 @@ class ReplyThreadState extends ChangeNotifier {
     loading = false;
     switch (res) {
       case Success(:final response):
-        final list = loaded ??= <ReplyInfo>[];
+        // 以已显示的预览打底，新加载的接在后面（去重），
+        // 展开时已经看到的几条不会跳位置
+        final list = loaded ??= List<ReplyInfo>.of(root.replies);
         final ids = <Int64>{for (final item in list) item.id};
         var added = 0;
         for (final item in response.root.replies) {
