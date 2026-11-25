@@ -51,6 +51,9 @@ void main() {
     Hive.init(tempDir.path);
     GStorage.regAdapter();
     GStorage.setting = await Hive.openBox('setting');
+    GStorage.localCache = await Hive.openBox('localCache');
+    GStorage.video = await Hive.openBox('video');
+    GStorage.historyWord = await Hive.openBox('historyWord');
   });
 
   tearDownAll(() async {
