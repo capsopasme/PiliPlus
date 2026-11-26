@@ -532,7 +532,10 @@ class _MainAppState extends PopScopeState<MainApp>
                 label: _mainController.dynamicBadgeMode == .number
                     ? Text(dynCount.toString())
                     : null,
-                padding: const .symmetric(horizontal: 6),
+                padding: const .symmetric(horizontal: 4),
+                largeSize: 13,
+                smallSize: 5,
+                textStyle: const TextStyle(fontSize: 8.5),
                 child: icon,
               );
             },
@@ -620,11 +623,12 @@ class _PiliNavBar extends StatelessWidget {
     final colorScheme = ColorScheme.of(context);
     final isDark = colorScheme.brightness == Brightness.dark;
     final bottom = MediaQuery.viewPaddingOf(context).bottom;
-    const radius = BorderRadius.all(Radius.circular(30));
+    const radius = BorderRadius.all(Radius.circular(23));
     return Padding(
-      padding: EdgeInsets.fromLTRB(14, 0, 14, bottom + 8),
+      // 原设计图：底栏高 46，左右留 9，离屏幕底边约 14
+      padding: EdgeInsets.fromLTRB(9, 0, 9, bottom > 0 ? bottom - 2 : 10),
       child: SizedBox(
-        height: 64,
+        height: 46,
         width: double.infinity,
         child: DecoratedBox(
           decoration: BoxDecoration(
@@ -637,8 +641,8 @@ class _PiliNavBar extends StatelessWidget {
                 color: colorScheme.shadow.withValues(
                   alpha: isDark ? 0.25 : 0.08,
                 ),
-                blurRadius: 18,
-                offset: const Offset(0, 4),
+                blurRadius: 12,
+                offset: const Offset(0, 2),
               ),
             ],
           ),
@@ -672,26 +676,26 @@ class _PiliNavBar extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             IconTheme.merge(
-              data: IconThemeData(color: color, size: 25),
+              data: IconThemeData(color: color, size: 18),
               child: buildIcon(type: type, selected: selected),
             ),
-            const SizedBox(height: 2),
+            const SizedBox(height: 1),
             Text(
               type.label,
               style: TextStyle(
-                fontSize: 11.5,
+                fontSize: 9.5,
                 height: 1.2,
                 color: color,
                 fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
               ),
             ),
-            const SizedBox(height: 3),
+            const SizedBox(height: 2),
             AnimatedOpacity(
               opacity: selected ? 1 : 0,
               duration: const Duration(milliseconds: 200),
               child: Container(
-                width: 4,
-                height: 4,
+                width: 3,
+                height: 3,
                 decoration: BoxDecoration(
                   color: colorScheme.primary,
                   shape: BoxShape.circle,

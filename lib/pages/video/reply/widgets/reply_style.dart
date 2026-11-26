@@ -111,31 +111,26 @@ class ReplyDivider extends StatelessWidget {
   }
 }
 
-/// 评论区排版常量
+/// 评论区排版常量（按原设计图相对屏幕宽度换算）
 abstract final class ReplyStyle {
   /// 一级评论左右留白（不包卡片）
   static const double rootPadding = 16;
 
   /// 楼中楼卡片：圆角矩形（RRect，绘制走快速路径）
   static const BorderRadius subCardRadius = BorderRadius.all(
-    Radius.circular(16),
+    Radius.circular(13),
   );
 
   /// 楼中楼面板里单独成卡的次级评论
-  static const EdgeInsets subCardMargin = EdgeInsets.fromLTRB(16, 0, 16, 10);
+  static const EdgeInsets subCardMargin = EdgeInsets.fromLTRB(16, 0, 16, 8);
 
-  static const EdgeInsets subCardPadding = EdgeInsets.fromLTRB(14, 12, 14, 12);
+  static const EdgeInsets subCardPadding = EdgeInsets.fromLTRB(10, 9, 10, 9);
 
   /// 一级评论下方楼中楼卡片的内边距
-  static const EdgeInsets threadCardPadding = EdgeInsets.fromLTRB(
-    12,
-    4,
-    12,
-    4,
-  );
+  static const EdgeInsets threadCardPadding = EdgeInsets.fromLTRB(9, 2, 9, 2);
 
   /// 主评论头像
-  static const double avatarSize = 40;
+  static const double avatarSize = 32;
 
   /// 头像与正文的间距；正文、楼中楼卡片都从这里开始缩进
   static const double avatarGap = 12;
@@ -143,35 +138,35 @@ abstract final class ReplyStyle {
   static const double contentIndent = avatarSize + avatarGap;
 
   /// 楼中楼头像
-  static const double subAvatarSize = 24;
+  static const double subAvatarSize = 19;
 
-  static const double subAvatarGap = 10;
+  static const double subAvatarGap = 9;
 
   static const double subContentIndent = subAvatarSize + subAvatarGap;
 
   static const TextStyle name = TextStyle(
-    fontSize: 15,
+    fontSize: 12.5,
     height: 1.3,
     fontWeight: FontWeight.w500,
     leadingDistribution: TextLeadingDistribution.even,
   );
 
   static const TextStyle subName = TextStyle(
-    fontSize: 13.5,
+    fontSize: 11,
     height: 1.3,
     fontWeight: FontWeight.w500,
     leadingDistribution: TextLeadingDistribution.even,
   );
 
   static const TextStyle meta = TextStyle(
-    fontSize: 12,
+    fontSize: 10,
     height: 1.3,
     leadingDistribution: TextLeadingDistribution.even,
   );
 
   /// 评论正文（一级）
   static const TextStyle content = TextStyle(
-    fontSize: 15.5,
+    fontSize: 13,
     height: 1.55,
     letterSpacing: 0.1,
     leadingDistribution: TextLeadingDistribution.even,
@@ -179,14 +174,14 @@ abstract final class ReplyStyle {
 
   /// 评论正文（次级）
   static const TextStyle subContent = TextStyle(
-    fontSize: 14.5,
+    fontSize: 12,
     height: 1.5,
     letterSpacing: 0.1,
     leadingDistribution: TextLeadingDistribution.even,
   );
 
   static const TextStyle action = TextStyle(
-    fontSize: 13,
+    fontSize: 11,
     height: 1.3,
     fontWeight: FontWeight.w500,
     leadingDistribution: TextLeadingDistribution.even,

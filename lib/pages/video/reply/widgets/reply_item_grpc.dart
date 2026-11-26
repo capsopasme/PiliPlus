@@ -246,14 +246,14 @@ class ReplyItemGrpc extends StatelessWidget {
       return null;
     }
     final liked = item.replyControl.action == Int64.ONE;
-    final double fontSize = small ? 12 : 13;
+    final double fontSize = small ? 9.5 : 10;
     return Row(
-      spacing: 4,
+      spacing: 3,
       mainAxisSize: MainAxisSize.min,
       children: [
         Icon(
           liked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-          size: fontSize + 5,
+          size: fontSize + 3.5,
           color: liked ? colorScheme.primary : palette.tertiaryLabel,
         ),
         Text(
@@ -342,7 +342,7 @@ class ReplyItemGrpc extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: ReplyStyle.meta.copyWith(
-                  fontSize: 12.5,
+                  fontSize: 11.5,
                   color: palette.secondaryLabel,
                 ),
               ),
@@ -397,9 +397,9 @@ class ReplyItemGrpc extends StatelessWidget {
           ? ReplyStyle.subCardPadding
           : const EdgeInsets.fromLTRB(
               ReplyStyle.rootPadding,
-              16,
+              12,
               ReplyStyle.rootPadding,
-              16,
+              12,
             ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -515,7 +515,7 @@ class ReplyItemGrpc extends StatelessWidget {
           child: PendantAvatar(
             member.face,
             size: ReplyStyle.avatarSize,
-            badgeSize: 14,
+            badgeSize: 11,
             vipStatus: member.vipStatus.toInt(),
             officialType: member.officialVerifyType.toInt(),
             pendantImage: member.hasGarbPendantImage()
@@ -548,7 +548,7 @@ class ReplyItemGrpc extends StatelessWidget {
                   BiliUtils.levelPicture(
                     member.level.toInt(),
                     isSeniorMember: member.isSeniorMember == 1,
-                    height: 10,
+                    height: 9,
                   ),
                   if (replyItem.mid == upMid)
                     const PBadge(
@@ -572,7 +572,7 @@ class ReplyItemGrpc extends StatelessWidget {
                     ),
                 ],
               ),
-              const SizedBox(height: 3),
+              const SizedBox(height: 2),
               Text(
                 meta,
                 maxLines: 1,
@@ -828,8 +828,8 @@ class ReplyItemGrpc extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.only(
             left: ReplyStyle.subContentIndent,
-            top: 4,
-            bottom: 4,
+            top: 2,
+            bottom: 2,
           ),
           child: footer,
         ),
@@ -837,7 +837,7 @@ class ReplyItemGrpc extends StatelessWidget {
     }
 
     return Padding(
-      padding: const EdgeInsets.only(top: 10),
+      padding: const EdgeInsets.only(top: 8),
       child: Stack(
         children: [
           Padding(
@@ -925,7 +925,7 @@ class ReplyItemGrpc extends StatelessWidget {
       onLongPress: showMore,
       onSecondaryTap: PlatformUtils.isMobile ? null : showMore,
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 9),
+        padding: const EdgeInsets.symmetric(vertical: 7),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,

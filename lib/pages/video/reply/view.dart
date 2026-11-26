@@ -82,7 +82,7 @@ class _VideoReplyPanelState extends State<VideoReplyPanel>
             // 半透明悬浮排序栏：只是带 alpha 的纯色，不做实时模糊
             backgroundColor: palette.headerBackground,
             child: Padding(
-              padding: const .fromLTRB(16, 4, 8, 4),
+              padding: const .fromLTRB(16, 2, 8, 2),
               child: Obx(() {
                 final sortType = _videoReplyController.sortType.value;
                 return Row(
@@ -91,7 +91,7 @@ class _VideoReplyPanelState extends State<VideoReplyPanel>
                     Text(
                       sortType.desc,
                       style: ReplyStyle.action.copyWith(
-                        fontSize: 12.5,
+                        fontSize: 11,
                         color: secondaryLabel,
                       ),
                     ),
@@ -100,13 +100,13 @@ class _VideoReplyPanelState extends State<VideoReplyPanel>
                       onPressed: _videoReplyController.queryBySort,
                       icon: Icon(
                         Icons.swap_vert_rounded,
-                        size: 15,
+                        size: 13,
                         color: palette.link,
                       ),
                       label: Text(
                         sortType.descShort,
                         style: ReplyStyle.action.copyWith(
-                          fontSize: 12.5,
+                          fontSize: 11,
                           color: palette.link,
                         ),
                       ),

@@ -1,7 +1,8 @@
 import 'package:PiliPlus/common/style.dart';
 import 'package:PiliPlus/common/widgets/image/image_save.dart';
 import 'package:PiliPlus/common/widgets/image/network_img_layer.dart';
-import 'package:PiliPlus/common/widgets/stat/stat.dart';
+import 'package:PiliPlus/models/common/stat_type.dart';
+import 'package:PiliPlus/utils/num_utils.dart';
 import 'package:PiliPlus/common/widgets/video_popup_menu.dart';
 import 'package:PiliPlus/http/search.dart';
 import 'package:PiliPlus/models/home/rcmd/result.dart';
@@ -82,7 +83,7 @@ class VideoCardV extends StatelessWidget {
   }
 
   /// 卡片圆角
-  static const double radius = 18;
+  static const double radius = 10;
   static const BorderRadius _borderRadius = BorderRadius.all(
     Radius.circular(radius),
   );
@@ -91,8 +92,10 @@ class VideoCardV extends StatelessWidget {
   );
 
   /// 卡片正文（封面以下）的高度：文字部分随字号缩放，其余固定
+  ///
+  /// 按原设计图：封面 16:10，正文高约为卡片宽的 0.64
   static double contentExtent(TextScaler textScaler) =>
-      textScaler.scale(62) + 58;
+      textScaler.scale(50) + 42;
 
   /// 白色卡片 + 很淡的投影。圆角矩形阴影在绘制时走快速路径，开销很小
   static BoxDecoration decoration(ColorScheme colorScheme) {
@@ -107,8 +110,8 @@ class VideoCardV extends StatelessWidget {
           : [
               BoxShadow(
                 color: colorScheme.shadow.withValues(alpha: 0.07),
-                blurRadius: 14,
-                offset: const Offset(0, 3),
+                blurRadius: 10,
+                offset: const Offset(0, 2),
               ),
             ],
     );
@@ -157,8 +160,8 @@ class VideoCardV extends StatelessWidget {
                         ),
                         if (videoItem.duration > 0)
                           Positioned(
-                            right: 8,
-                            bottom: 8,
+                            right: 5,
+                            bottom: 5,
                             child: _DurationBadge(
                               DurationUtils.formatDuration(videoItem.duration),
                             ),
@@ -180,16 +183,9 @@ class VideoCardV extends StatelessWidget {
     final colorScheme = theme.colorScheme;
     final outline = colorScheme.outline;
     final face = _face;
-    final String? badge = videoItem.goto == 'bangumi'
-        ? videoItem.pgcBadge
-        : videoItem.goto == 'picture'
-        ? '动态'
-        : videoItem.isFollowed
-        ? '已关注'
-        : videoItem.rcmdReason;
     return Expanded(
       child: Padding(
-        padding: const .fromLTRB(12, 10, 6, 6),
+        padding: const .fromLTRB(9, 8, 3, 6),
         child: Column(
           crossAxisAlignment: .start,
           children: [
@@ -201,60 +197,54 @@ class VideoCardV extends StatelessWidget {
                   maxLines: 2,
                   overflow: .ellipsis,
                   style: TextStyle(
-                    fontSize: 15,
-                    height: 1.36,
-                    fontWeight: FontWeight.w500,
+                    fontSize: 13.5,
+                    height: 1.35,
                     color: colorScheme.onSurface,
                   ),
                 ),
               ),
             ),
             Padding(
-              padding: const .only(right: 6, top: 4, bottom: 6),
-              child: videoStat(theme, badge),
+              padding: const .only(right: 6, top: 5, bottom: 4),
+              child: videoStat(theme),
             ),
             SizedBox(
-              height: 28,
+              height: 18,
               child: Row(
                 children: [
                   if (face != null)
                     NetworkImgLayer(
                       src: face,
-                      width: 22,
-                      height: 22,
+                      width: 15,
+                      height: 15,
                       type: .avatar,
                     )
                   else
                     SizedBox.square(
-                      dimension: 22,
+                      dimension: 15,
                       child: DecoratedBox(
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color: colorScheme.primary.withValues(alpha: 0.12),
-                        ),
-                        child: Icon(
-                          Icons.person_rounded,
-                          size: 14,
-                          color: colorScheme.primary,
+                          color: colorScheme.onSurface.withValues(alpha: 0.08),
                         ),
                       ),
                     ),
-                  const SizedBox(width: 7),
+                  const SizedBox(width: 5),
                   Expanded(
                     child: Text(
                       videoItem.owner.name.toString(),
                       maxLines: 1,
                       overflow: .ellipsis,
                       semanticsLabel: 'UP：${videoItem.owner.name}',
-                      style: TextStyle(fontSize: 13, color: outline),
+                      style: TextStyle(fontSize: 10, color: outline),
                     ),
                   ),
                   if (videoItem.goto == 'av')
                     SizedBox(
-                      width: 28,
-                      height: 28,
+                      width: 20,
+                      height: 18,
                       child: VideoPopupMenu(
-                        iconSize: 18,
+                        iconSize: 13,
                         videoItem: videoItem,
                         onRemove: onRemove,
                       ),
@@ -273,64 +263,61 @@ class VideoCardV extends StatelessWidget {
   static final shortFormat = DateFormat('M-d');
   static final longFormat = DateFormat('yy-M-d');
 
-  Widget videoStat(ThemeData theme, String? badge) {
+  Widget videoStat(ThemeData theme) {
     final color = theme.colorScheme.outline;
+    return SizedBox(
+      height: 14,
+      child: Row(
+        children: [
+          _Stat(icon: StatType.play.iconData, value: videoItem.stat.view, color: color),
+          if (videoItem.goto != 'picture') ...[
+            const SizedBox(width: 9),
+            _Stat(
+              icon: StatType.danmaku.iconData,
+              value: videoItem.stat.danmu,
+              color: color,
+            ),
+          ],
+          if (videoItem is RcmdVideoItemModel) ...[
+            const Spacer(),
+            Text(
+              DateFormatUtils.dateFormat(
+                videoItem.pubdate,
+                short: shortFormat,
+                long: longFormat,
+              ),
+              maxLines: 1,
+              style: TextStyle(
+                fontSize: 9.5,
+                color: color.withValues(alpha: 0.8),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// 播放数/弹幕数：小号图标 + 数字
+class _Stat extends StatelessWidget {
+  const _Stat({required this.icon, required this.value, required this.color});
+
+  final IconData icon;
+  final int? value;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
     return Row(
+      mainAxisSize: MainAxisSize.min,
+      spacing: 2.5,
       children: [
-        StatWidget(
-          type: .play,
-          value: videoItem.stat.view,
-          color: color,
-          iconSize: 15,
+        Icon(icon, size: 11.5, color: color),
+        Text(
+          NumUtils.numFormat(value),
+          style: TextStyle(fontSize: 10, height: 1.2, color: color),
         ),
-        if (videoItem.goto != 'picture') ...[
-          const SizedBox(width: 12),
-          StatWidget(
-            type: .danmaku,
-            value: videoItem.stat.danmu,
-            color: color,
-            iconSize: 15,
-          ),
-        ],
-        const SizedBox(width: 8),
-        if (badge != null && badge.isNotEmpty)
-          Expanded(
-            child: Align(
-              alignment: Alignment.centerRight,
-              child: Container(
-              padding: const .symmetric(horizontal: 6, vertical: 1),
-              decoration: BoxDecoration(
-                color: theme.colorScheme.primary.withValues(alpha: 0.1),
-                borderRadius: const BorderRadius.all(Radius.circular(6)),
-              ),
-              child: Text(
-                badge,
-                maxLines: 1,
-                overflow: .ellipsis,
-                style: TextStyle(
-                  fontSize: 10.5,
-                  height: 1.4,
-                  color: theme.colorScheme.primary,
-                ),
-              ),
-              ),
-            ),
-          )
-        else if (videoItem is RcmdVideoItemModel) ...[
-          const Spacer(),
-          Text(
-            DateFormatUtils.dateFormat(
-              videoItem.pubdate,
-              short: shortFormat,
-              long: longFormat,
-            ),
-            maxLines: 1,
-            style: TextStyle(
-              fontSize: 11,
-              color: color.withValues(alpha: 0.8),
-            ),
-          ),
-        ],
       ],
     );
   }
@@ -347,14 +334,14 @@ class _DurationBadge extends StatelessWidget {
     return DecoratedBox(
       decoration: const BoxDecoration(
         color: Color(0x8C000000),
-        borderRadius: BorderRadius.all(Radius.circular(10)),
+        borderRadius: BorderRadius.all(Radius.circular(8)),
       ),
       child: Padding(
-        padding: const .symmetric(horizontal: 7, vertical: 2),
+        padding: const .symmetric(horizontal: 5, vertical: 1.5),
         child: Text(
           text,
           style: const TextStyle(
-            fontSize: 11.5,
+            fontSize: 9.5,
             height: 1.3,
             color: Colors.white,
             fontWeight: FontWeight.w500,
@@ -396,7 +383,7 @@ class VideoCardVRcmdSkeleton extends StatelessWidget {
             ),
           ),
           Padding(
-            padding: const .fromLTRB(12, 12, 12, 0),
+            padding: const .fromLTRB(9, 10, 9, 0),
             child: Column(
               crossAxisAlignment: .start,
               children: [

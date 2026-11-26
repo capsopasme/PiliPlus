@@ -36,7 +36,7 @@ class _RcmdPageState extends State<RcmdPage>
         physics: const AlwaysScrollableScrollPhysics(),
         slivers: [
           SliverPadding(
-            padding: const .fromLTRB(14, 6, 14, 120),
+            padding: const .fromLTRB(12, 8, 12, 80),
             sliver: Obx(
               () => _buildBody(colorScheme, controller.loadingState.value),
             ),
@@ -47,8 +47,8 @@ class _RcmdPageState extends State<RcmdPage>
   }
 
   late final gridDelegate = SliverGridDelegateWithExtentAndRatio(
-    mainAxisSpacing: 14,
-    crossAxisSpacing: 12,
+    mainAxisSpacing: 11,
+    crossAxisSpacing: 8,
     maxCrossAxisExtent: Pref.recommendCardWidth,
     childAspectRatio: Style.aspectRatio,
     mainAxisExtent: VideoCardV.contentExtent(MediaQuery.textScalerOf(context)),

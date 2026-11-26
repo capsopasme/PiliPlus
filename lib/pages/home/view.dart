@@ -44,7 +44,7 @@ class _HomePageState extends CommonPageState<HomePage>
     Widget tabBar;
     if (_homeController.tabs.length > 1) {
       tabBar = SizedBox(
-        height: 56,
+        height: 52,
         width: double.infinity,
         child: _HomeTabChips(
           controller: _homeController.tabController,
@@ -88,24 +88,30 @@ class _HomePageState extends CommonPageState<HomePage>
   }
 
   Widget customAppBar() {
-    const padding = EdgeInsets.fromLTRB(16, 4, 16, 0);
+    // 尺寸按原设计图相对屏幕宽度换算：搜索框高 38，圆形按钮 33
+    const padding = EdgeInsets.fromLTRB(14, 9, 14, 5);
     final child = Row(
       children: [
         searchBar(),
         Obx(
           () => _mainController.accountService.isLogin.value
               ? Padding(
-                  padding: const EdgeInsets.only(left: 10),
-                  child: _CircleSurface(child: msgBadge(_mainController)),
+                  padding: const EdgeInsets.only(left: 9),
+                  child: _CircleSurface(
+                    child: msgBadge(
+                      _mainController,
+                      compactSize: _CircleSurface.size,
+                    ),
+                  ),
                 )
               : const SizedBox.shrink(),
         ),
-        const SizedBox(width: 10),
+        const SizedBox(width: 9),
         _CircleSurface(
           child: userAvatar(
             colorScheme: _colorScheme,
             mainController: _mainController,
-            size: 40,
+            size: 28,
           ),
         ),
       ],
@@ -151,12 +157,12 @@ class _HomePageState extends CommonPageState<HomePage>
   }
 
   Widget searchBar() {
-    const borderRadius = BorderRadius.all(Radius.circular(24));
+    const borderRadius = BorderRadius.all(Radius.circular(19));
     return Expanded(
       child: DecoratedBox(
         decoration: _HomeSurface.decoration(_colorScheme, borderRadius),
         child: SizedBox(
-          height: 46,
+          height: 38,
           child: Material(
             type: MaterialType.transparency,
             child: InkWell(
@@ -172,10 +178,10 @@ class _HomePageState extends CommonPageState<HomePage>
               ),
               child: Row(
                 children: [
-                  const SizedBox(width: 16),
+                  const SizedBox(width: 15),
                   Icon(
                     Icons.search_rounded,
-                    size: 24,
+                    size: 19,
                     color: _colorScheme.onSurface,
                     semanticLabel: '搜索',
                   ),
@@ -189,7 +195,7 @@ class _HomePageState extends CommonPageState<HomePage>
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            fontSize: 14.5,
+                            fontSize: 11,
                             color: _colorScheme.outline,
                           ),
                         );
@@ -224,28 +230,30 @@ abstract final class _HomeSurface {
           : [
               BoxShadow(
                 color: colorScheme.shadow.withValues(alpha: 0.05),
-                blurRadius: 12,
-                offset: const Offset(0, 2),
+                blurRadius: 8,
+                offset: const Offset(0, 1.5),
               ),
             ],
     );
   }
 }
 
-/// 46dp 的圆形浮层，放消息铃铛/头像
+/// 圆形浮层，放消息铃铛/头像
 class _CircleSurface extends StatelessWidget {
   const _CircleSurface({required this.child});
+
+  static const double size = 33;
 
   final Widget child;
 
   @override
   Widget build(BuildContext context) {
     return SizedBox.square(
-      dimension: 46,
+      dimension: size,
       child: DecoratedBox(
         decoration: _HomeSurface.decoration(
           ColorScheme.of(context),
-          const BorderRadius.all(Radius.circular(23)),
+          const BorderRadius.all(Radius.circular(size / 2)),
         ),
         child: Center(child: child),
       ),
@@ -278,9 +286,9 @@ class _HomeTabChips extends StatelessWidget {
     final animation = controller.animation!;
     return ListView.separated(
       scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      padding: const EdgeInsets.fromLTRB(14, 13, 14, 12),
       itemCount: labels.length,
-      separatorBuilder: (_, _) => const SizedBox(width: 10),
+      separatorBuilder: (_, _) => const SizedBox(width: 8),
       itemBuilder: (context, index) {
         return AnimatedBuilder(
           animation: animation,
@@ -303,14 +311,14 @@ class _HomeTabChips extends StatelessWidget {
               child: InkWell(
                 onTap: () => onTap(index),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: Stack(
                     alignment: Alignment.center,
                     children: [
                       Text(
                         labels[index],
                         style: TextStyle(
-                          fontSize: 16,
+                          fontSize: 11,
                           height: 1.2,
                           fontWeight: t > 0.5
                               ? FontWeight.w700
@@ -321,14 +329,14 @@ class _HomeTabChips extends StatelessWidget {
                       // 选中项下方的短横线
                       if (t > 0)
                         Positioned(
-                          bottom: 3,
+                          bottom: 2.5,
                           child: Container(
-                            width: 14,
-                            height: 3,
+                            width: 9,
+                            height: 1.6,
                             decoration: BoxDecoration(
                               color: foreground.withValues(alpha: t),
                               borderRadius: const BorderRadius.all(
-                                Radius.circular(1.5),
+                                Radius.circular(0.8),
                               ),
                             ),
                           ),
@@ -423,7 +431,7 @@ Widget userAvatar({
   );
 }
 
-Widget msgBadge(MainController mainController) {
+Widget msgBadge(MainController mainController, {double? compactSize}) {
   return Obx(
     () {
       if (mainController.accountService.isLogin.value) {
@@ -431,6 +439,15 @@ Widget msgBadge(MainController mainController) {
         final isNumBadge = mainController.msgBadgeMode == .number;
         return IconButton(
           tooltip: '消息',
+          iconSize: compactSize == null ? null : compactSize * 0.52,
+          style: compactSize == null
+              ? null
+              : IconButton.styleFrom(
+                  padding: EdgeInsets.zero,
+                  minimumSize: Size.square(compactSize),
+                  maximumSize: Size.square(compactSize),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
           onPressed: () {
             mainController
               ..clearUnreadMsg()
@@ -444,6 +461,14 @@ Widget msgBadge(MainController mainController) {
                 ? const Alignment(0.0, -0.85)
                 : const Alignment(1.0, -0.85),
             label: isNumBadge && count != null ? Text(count) : null,
+            largeSize: compactSize == null ? null : 13,
+            smallSize: compactSize == null ? null : 5,
+            textStyle: compactSize == null
+                ? null
+                : const TextStyle(fontSize: 8.5),
+            padding: compactSize == null
+                ? null
+                : const EdgeInsets.symmetric(horizontal: 4),
             child: const Icon(Icons.notifications_none),
           ),
         );

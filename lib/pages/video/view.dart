@@ -1407,14 +1407,14 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
             ? const BoxDecoration()
             : UnderlineTabIndicator(
                 borderRadius: const BorderRadius.all(Radius.circular(2)),
-                borderSide: BorderSide(width: 3.5, color: colorScheme.primary),
-                insets: const EdgeInsets.fromLTRB(22, 0, 22, 5),
+                borderSide: BorderSide(width: 2.5, color: colorScheme.primary),
+                insets: const EdgeInsets.symmetric(horizontal: 17),
               ),
         labelColor: flag ? colorScheme.onSurface : colorScheme.primary,
         unselectedLabelColor: colorScheme.outline,
-        labelStyle: const TextStyle(fontSize: 15.5, fontWeight: FontWeight.w600),
-        unselectedLabelStyle: const TextStyle(fontSize: 15.5),
-        splashBorderRadius: const BorderRadius.all(Radius.circular(14)),
+        labelStyle: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
+        unselectedLabelStyle: const TextStyle(fontSize: 12.5),
+        splashBorderRadius: const BorderRadius.all(Radius.circular(10)),
         onTap: (value) {
           void animToTop() {
             if (onTap != null) {
@@ -1442,6 +1442,7 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
             return Obx(() {
               final count = _videoReplyController.count.value;
               return Tab(
+                height: 36,
                 child: Text(
                   '评论${count == -1 ? '' : ' ${NumUtils.numFormat(count)}'}',
                   softWrap: false,
@@ -1451,6 +1452,7 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
             });
           } else {
             return Tab(
+              height: 36,
               child: Text(text, softWrap: false, overflow: .visible),
             );
           }
@@ -1460,7 +1462,8 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
 
     final isDark = colorScheme.brightness == Brightness.dark;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 6, 12, 6),
+      // 按原设计图：卡片高 36，左右留 16
+      padding: const EdgeInsets.fromLTRB(16, 5, 16, 5),
       child: DecoratedBox(
         // 圆角卡片 + 很淡的投影（RRect 阴影走快速路径，开销很小）
         decoration: BoxDecoration(
@@ -1470,19 +1473,19 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
                   colorScheme.primary.withValues(alpha: 0.03),
                   colorScheme.surfaceContainerLowest,
                 ),
-          borderRadius: const BorderRadius.all(Radius.circular(16)),
+          borderRadius: const BorderRadius.all(Radius.circular(11)),
           boxShadow: isDark
               ? null
               : [
                   BoxShadow(
                     color: colorScheme.shadow.withValues(alpha: 0.06),
-                    blurRadius: 12,
-                    offset: const Offset(0, 2),
+                    blurRadius: 8,
+                    offset: const Offset(0, 1.5),
                   ),
                 ],
         ),
         child: SizedBox(
-          height: 46,
+          height: 36,
           child: Row(
             children: [
               if (tabs.isEmpty)
@@ -1491,18 +1494,21 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
                 Expanded(
                   child: Align(
                     alignment: .centerLeft,
-                    child: ConstrainedBox(
-                      constraints: BoxConstraints(
-                        maxWidth: 104.0 * tabs.length,
+                    child: Padding(
+                      padding: const EdgeInsets.only(left: 6),
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(
+                          maxWidth: 76.0 * tabs.length,
+                        ),
+                        child: tabBar(),
                       ),
-                      child: tabBar(),
                     ),
                   ),
                 ),
               Padding(
-                padding: const EdgeInsets.only(right: 5),
+                padding: const EdgeInsets.only(right: 6),
                 child: SizedBox.square(
-                  dimension: 36,
+                  dimension: 25,
                   child: Obx(
                     () {
                       final ctr = videoDetailController.plPlayerController;
@@ -1513,9 +1519,11 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
                           backgroundColor: colorScheme.primary.withValues(
                             alpha: enableShowDanmaku ? 0.10 : 0.05,
                           ),
+                          minimumSize: const Size.square(25),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                           shape: const RoundedRectangleBorder(
                             borderRadius: BorderRadius.all(
-                              Radius.circular(11),
+                              Radius.circular(7),
                             ),
                           ),
                         ),
@@ -1530,7 +1538,7 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
                           }
                         },
                         icon: Icon(
-                          size: 21,
+                          size: 15,
                           enableShowDanmaku
                               ? CustomIcons.dm_on
                               : CustomIcons.dm_off,
