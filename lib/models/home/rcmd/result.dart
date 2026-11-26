@@ -11,6 +11,12 @@ class RcmdVideoItemAppModel extends BaseRcmdVideoItemModel {
   String? cardType;
   ThreePoint? threePoint;
 
+  /// 推荐系统给这张卡片的追踪 id；打开视频时带回去，推荐系统才知道「这条被点了」
+  String? trackId;
+
+  /// 卡片在推荐流里的序号，加载下一页时作为 idx 传回
+  int? idx;
+
   RcmdVideoItemAppModel.fromJson(Map<String, dynamic> json) {
     aid = json['player_args']?['aid'] ?? parseIntOrNull(json['param']);
     bvid = json['bvid'] ?? IdUtils.av2bv(aid!);
@@ -50,6 +56,10 @@ class RcmdVideoItemAppModel extends BaseRcmdVideoItemModel {
         ? ThreePoint.fromJson(json['three_point_v2'])
         : null;
     desc = json['desc'];
+    final trackId = json['track_id'];
+    if (trackId is String && trackId.isNotEmpty) this.trackId = trackId;
+    final idx = json['idx'];
+    this.idx = idx is int ? idx : (idx is String ? int.tryParse(idx) : null);
   }
 }
 
@@ -61,11 +71,19 @@ class RcmdStat extends BaseStat {
 }
 
 class RcmdOwner extends BaseOwner {
+  /// UP 主头像（卡片 mask / avatar 里带的，没有时为 null）
+  String? face;
+
   RcmdOwner.fromJson(Map<String, dynamic> json, String? goto) {
     name = goto == 'av'
         ? (json['args']?['up_name'] ?? '')
         : (json['desc_button']?['text'] ?? '');
     mid = json['args']?['up_id'] ?? 0;
+    final avatar = json['mask']?['avatar'] ?? json['avatar'];
+    if (avatar is Map) {
+      final cover = avatar['cover'];
+      if (cover is String && cover.isNotEmpty) face = cover;
+    }
   }
 }
 

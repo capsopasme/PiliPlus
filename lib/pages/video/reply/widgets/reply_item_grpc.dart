@@ -201,9 +201,9 @@ class ReplyItemGrpc extends StatelessWidget {
       return Padding(
         padding: ReplyStyle.subCardMargin,
         child: DecoratedBox(
-          decoration: ShapeDecoration(
+          decoration: BoxDecoration(
             color: palette.subCard,
-            shape: ReplyStyle.subCardShape,
+            borderRadius: ReplyStyle.subCardRadius,
           ),
           child: child,
         ),
@@ -246,14 +246,14 @@ class ReplyItemGrpc extends StatelessWidget {
       return null;
     }
     final liked = item.replyControl.action == Int64.ONE;
-    final double fontSize = small ? 11 : 11.5;
+    final double fontSize = small ? 12 : 13;
     return Row(
-      spacing: 3,
+      spacing: 4,
       mainAxisSize: MainAxisSize.min,
       children: [
         Icon(
           liked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-          size: fontSize + 1.5,
+          size: fontSize + 5,
           color: liked ? colorScheme.primary : palette.tertiaryLabel,
         ),
         Text(
@@ -376,6 +376,10 @@ class ReplyItemGrpc extends StatelessWidget {
     final footer = _buildFooter(context, colorScheme, palette, replyControl);
     final hasThread = replyLevel == 1 && replyItem.count > Int64.ZERO;
     final replyReply = this.replyReply;
+    if (hasThread && state != null) {
+      // 预览不足 3 条时补齐（只请求一次，结果缓存在状态里）
+      state.ensurePreview(replyItem);
+    }
 
     VoidCallback? onShowMore;
     if (replyLevel == 1) {
@@ -393,9 +397,9 @@ class ReplyItemGrpc extends StatelessWidget {
           ? ReplyStyle.subCardPadding
           : const EdgeInsets.fromLTRB(
               ReplyStyle.rootPadding,
-              12,
+              16,
               ReplyStyle.rootPadding,
-              12,
+              16,
             ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -405,7 +409,7 @@ class ReplyItemGrpc extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.only(
               left: ReplyStyle.contentIndent,
-              top: 4,
+              top: 6,
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -511,7 +515,7 @@ class ReplyItemGrpc extends StatelessWidget {
           child: PendantAvatar(
             member.face,
             size: ReplyStyle.avatarSize,
-            badgeSize: 12,
+            badgeSize: 14,
             vipStatus: member.vipStatus.toInt(),
             officialType: member.officialVerifyType.toInt(),
             pendantImage: member.hasGarbPendantImage()
@@ -743,7 +747,11 @@ class ReplyItemGrpc extends StatelessWidget {
     );
   }
 
-  /// 楼中楼（Reddit 式）：放在与正文对齐的半透明圆角卡片里，默认显示前 3 条
+  /// 楼中楼（Reddit 式）：放在与正文对齐的圆角卡片里，默认显示前
+  /// [ReplyThreadState.previewCount] 条。
+  ///
+  /// 列表接口每条主评论只附带 2 条预览，不足的部分由 [ReplyThreadState.ensurePreview]
+  /// 请求楼中楼第一页补齐；这一页同时缓存下来，之后点「展开」直接显示，不再重复请求。
   Widget _buildThread(
     BuildContext context,
     ColorScheme colorScheme,
@@ -751,14 +759,13 @@ class ReplyItemGrpc extends StatelessWidget {
     ReplyThreadState? state,
   ) {
     final List<ReplyInfo> preview =
-        replyItem.replies.length > ReplyStyle.previewCount
-        ? replyItem.replies.sublist(0, ReplyStyle.previewCount)
-        : replyItem.replies;
+        state?.previewOf(replyItem) ??
+        ReplyThreadState.takePreview(replyItem.replies);
     final List<ReplyInfo>? loaded = state?.loaded;
     final bool showAll = state != null && state.showAll && loaded != null;
     final List<ReplyInfo> items = showAll ? loaded : preview;
     final int total = replyItem.count.toInt();
-    final linkStyle = ReplyStyle.action.copyWith(color: colorScheme.primary);
+    final linkStyle = ReplyStyle.action.copyWith(color: palette.link);
     final mutedStyle = ReplyStyle.action.copyWith(
       color: palette.secondaryLabel,
     );
@@ -769,25 +776,27 @@ class ReplyItemGrpc extends StatelessWidget {
       if (total > items.length) {
         final replyReply = this.replyReply;
         footer = _textAction(
-          '$upPrefix共$total条回复',
+          '$upPrefix共 $total 条回复',
           linkStyle,
           replyReply == null ? null : () => replyReply(replyItem, null),
           icon: Icons.chevron_right_rounded,
         );
       }
-    } else if (state.loading) {
+    } else if (state.loading && showAll) {
       footer = _textAction('加载中…', mutedStyle, null);
     } else if (showAll ? !state.isEnd : total > items.length) {
       final remaining = total - items.length;
       footer = _textAction(
-        state.hasError
+        state.hasError && showAll
             ? '加载失败，点击重试'
+            : showAll
+            ? '展开更多回复'
             : remaining > 0
-            ? '$upPrefix展开 $remaining 条回复'
+            ? '$upPrefix共 $total 条回复'
             : '展开更多回复',
         linkStyle,
         () => state.expandReplies(replyItem),
-        icon: Icons.expand_more_rounded,
+        icon: showAll ? Icons.expand_more_rounded : Icons.chevron_right_rounded,
       );
     } else if (showAll && items.length > preview.length) {
       footer = _textAction(
@@ -802,8 +811,33 @@ class ReplyItemGrpc extends StatelessWidget {
       return const SizedBox.shrink();
     }
 
+    final children = <Widget>[];
+    for (int i = 0; i < items.length; i++) {
+      if (i > 0) {
+        children.add(_subDivider(context, palette));
+      }
+      children.add(
+        _buildSubReply(context, colorScheme, palette, items[i], state),
+      );
+    }
+    if (footer != null) {
+      if (children.isNotEmpty) {
+        children.add(_subDivider(context, palette));
+      }
+      children.add(
+        Padding(
+          padding: const EdgeInsets.only(
+            left: ReplyStyle.subContentIndent,
+            top: 4,
+            bottom: 4,
+          ),
+          child: footer,
+        ),
+      );
+    }
+
     return Padding(
-      padding: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.only(top: 10),
       child: Stack(
         children: [
           Padding(
@@ -811,26 +845,16 @@ class ReplyItemGrpc extends StatelessWidget {
             child: SizedBox(
               width: double.infinity,
               child: DecoratedBox(
-                decoration: ShapeDecoration(
+                decoration: BoxDecoration(
                   color: palette.subCard,
-                  shape: ReplyStyle.subCardShape,
+                  borderRadius: ReplyStyle.subCardRadius,
                 ),
                 child: Padding(
                   padding: ReplyStyle.threadCardPadding,
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      for (final child in items)
-                        _buildSubReply(
-                          context,
-                          colorScheme,
-                          palette,
-                          child,
-                          state,
-                        ),
-                      ?footer,
-                    ],
+                    children: children,
                   ),
                 ),
               ),
@@ -852,6 +876,18 @@ class ReplyItemGrpc extends StatelessWidget {
               ),
             ),
         ],
+      ),
+    );
+  }
+
+  /// 楼中楼卡片内的细线（1 个物理像素，左侧与回复正文对齐）
+  static Widget _subDivider(BuildContext context, ReplyPalette palette) {
+    return Padding(
+      padding: const EdgeInsets.only(left: ReplyStyle.subContentIndent),
+      child: SizedBox(
+        height: 1 / MediaQuery.devicePixelRatioOf(context),
+        width: double.infinity,
+        child: ColoredBox(color: palette.subDivider),
       ),
     );
   }
@@ -889,7 +925,7 @@ class ReplyItemGrpc extends StatelessWidget {
       onLongPress: showMore,
       onSecondaryTap: PlatformUtils.isMobile ? null : showMore,
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 5),
+        padding: const EdgeInsets.symmetric(vertical: 9),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -929,11 +965,10 @@ class ReplyItemGrpc extends StatelessWidget {
                     textScaleFactor: 1,
                   ),
                 ],
-                const SizedBox(width: 6),
+                const SizedBox(width: 8),
                 Text(
                   DateFormatUtils.dateFormat(child.ctime.toInt()),
                   style: ReplyStyle.meta.copyWith(
-                    fontSize: 10.5,
                     color: palette.tertiaryLabel,
                   ),
                 ),

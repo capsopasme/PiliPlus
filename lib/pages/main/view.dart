@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:PiliPlus/common/assets.dart';
 import 'package:PiliPlus/common/constants.dart';
 import 'package:PiliPlus/common/style.dart';
-import 'package:PiliPlus/common/widgets/floating_navigation_bar.dart';
 import 'package:PiliPlus/common/widgets/flutter/pop_scope.dart';
 import 'package:PiliPlus/common/widgets/image/network_img_layer.dart';
 import 'package:PiliPlus/common/widgets/main_layout.dart';
@@ -336,60 +335,14 @@ class _MainAppState extends PopScopeState<MainApp>
   Widget? get _bottomNav {
     Widget? bottomNav;
     if (_mainController.navigationBars.length > 1) {
-      if (_mainController.floatingNavBar) {
-        bottomNav = Obx(
-          () => FloatingNavigationBar(
-            onDestinationSelected: _mainController.setIndex,
-            selectedIndex: _mainController.selectedIndex.value,
-            destinations: _mainController.navigationBars
-                .map(
-                  (e) => FloatingNavigationDestination(
-                    label: e.label,
-                    icon: _buildIcon(type: e),
-                    selectedIcon: _buildIcon(type: e, selected: true),
-                  ),
-                )
-                .toList(),
-          ),
-        );
-      } else if (_mainController.enableMYBar) {
-        bottomNav = Obx(
-          () => NavigationBar(
-            maintainBottomViewPadding: true,
-            onDestinationSelected: _mainController.setIndex,
-            selectedIndex: _mainController.selectedIndex.value,
-            destinations: _mainController.navigationBars
-                .map(
-                  (e) => NavigationDestination(
-                    label: e.label,
-                    icon: _buildIcon(type: e),
-                    selectedIcon: _buildIcon(type: e, selected: true),
-                  ),
-                )
-                .toList(),
-          ),
-        );
-      } else {
-        bottomNav = Obx(
-          () => BottomNavigationBar(
-            currentIndex: _mainController.selectedIndex.value,
-            onTap: _mainController.setIndex,
-            iconSize: 16,
-            selectedFontSize: 12,
-            unselectedFontSize: 12,
-            type: .fixed,
-            items: _mainController.navigationBars
-                .map(
-                  (e) => BottomNavigationBarItem(
-                    label: e.label,
-                    icon: _buildIcon(type: e),
-                    activeIcon: _buildIcon(type: e, selected: true),
-                  ),
-                )
-                .toList(),
-          ),
-        );
-      }
+      bottomNav = Obx(
+        () => _PiliNavBar(
+          selectedIndex: _mainController.selectedIndex.value,
+          onSelected: _mainController.setIndex,
+          items: _mainController.navigationBars,
+          buildIcon: _buildIcon,
+        ),
+      );
 
       if (_mainController.hideBottomBar) {
         if (_mainController.barOffset case final barOffset?) {
@@ -532,10 +485,22 @@ class _MainAppState extends PopScopeState<MainApp>
     }
 
     child = Material(
-      child: MainLayout(
-        sideBar: sideBar,
-        bottomNav: bottomNav,
-        body: Padding(padding: padding, child: child),
+      type: MaterialType.transparency,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          // 静态背景单独一层，列表滚动时不会重新绘制它
+          RepaintBoundary(
+            child: CustomPaint(
+              painter: _MainBackgroundPainter(_colorScheme),
+            ),
+          ),
+          MainLayout(
+            sideBar: sideBar,
+            bottomNav: bottomNav,
+            body: Padding(padding: padding, child: child),
+          ),
+        ],
       ),
     );
 
@@ -590,6 +555,152 @@ class _MainAppState extends PopScopeState<MainApp>
           onPressed: () => Get.toNamed('/search'),
         ),
       ],
+    );
+  }
+}
+
+/// 主页背景：底色 + 右上角/右下角两团很淡的主题色光晕。
+///
+/// 每团光晕是一次径向渐变填充，只画在各自的矩形范围内；
+/// 外面包了 RepaintBoundary，只有主题变化时才重绘。
+class _MainBackgroundPainter extends CustomPainter {
+  _MainBackgroundPainter(this.colorScheme);
+
+  final ColorScheme colorScheme;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final isDark = colorScheme.brightness == Brightness.dark;
+    final base = colorScheme.surface;
+    canvas.drawRect(Offset.zero & size, Paint()..color = base);
+
+    void glow(Offset center, double radius, double alpha) {
+      final rect = Rect.fromCircle(center: center, radius: radius)
+          .intersect(Offset.zero & size);
+      if (rect.isEmpty) return;
+      final tint = colorScheme.primary.withValues(alpha: alpha);
+      canvas.drawRect(
+        rect,
+        Paint()
+          ..shader = RadialGradient(
+            colors: [tint, tint.withValues(alpha: alpha * 0.45), base.withValues(alpha: 0)],
+            stops: const [0.0, 0.45, 1.0],
+          ).createShader(Rect.fromCircle(center: center, radius: radius)),
+      );
+    }
+
+    final w = size.width;
+    final h = size.height;
+    glow(Offset(w * 0.92, h * 0.02), w * 0.85, isDark ? 0.16 : 0.20);
+    glow(Offset(w * 1.02, h * 0.98), w * 0.65, isDark ? 0.10 : 0.13);
+  }
+
+  @override
+  bool shouldRepaint(_MainBackgroundPainter oldDelegate) =>
+      oldDelegate.colorScheme != colorScheme;
+}
+
+/// 悬浮的圆角底栏：半透明白底 + 淡投影，选中项为主题色并在文字下方加小圆点。
+class _PiliNavBar extends StatelessWidget {
+  const _PiliNavBar({
+    required this.selectedIndex,
+    required this.onSelected,
+    required this.items,
+    required this.buildIcon,
+  });
+
+  final int selectedIndex;
+  final ValueChanged<int> onSelected;
+  final List<NavigationBarType> items;
+  final Widget Function({required NavigationBarType type, bool selected})
+  buildIcon;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = ColorScheme.of(context);
+    final isDark = colorScheme.brightness == Brightness.dark;
+    final bottom = MediaQuery.viewPaddingOf(context).bottom;
+    const radius = BorderRadius.all(Radius.circular(30));
+    return Padding(
+      padding: EdgeInsets.fromLTRB(14, 0, 14, bottom + 8),
+      child: SizedBox(
+        height: 64,
+        width: double.infinity,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: isDark
+                ? colorScheme.surfaceContainerHigh.withValues(alpha: 0.94)
+                : colorScheme.surfaceContainerLowest.withValues(alpha: 0.92),
+            borderRadius: radius,
+            boxShadow: [
+              BoxShadow(
+                color: colorScheme.shadow.withValues(
+                  alpha: isDark ? 0.25 : 0.08,
+                ),
+                blurRadius: 18,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Material(
+            type: MaterialType.transparency,
+            child: Row(
+              children: [
+                for (int i = 0; i < items.length; i++)
+                  Expanded(
+                    child: _navItem(colorScheme, i, radius),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _navItem(ColorScheme colorScheme, int index, BorderRadius radius) {
+    final selected = index == selectedIndex;
+    final color = selected ? colorScheme.primary : colorScheme.onSurfaceVariant;
+    final type = items[index];
+    return InkWell(
+      borderRadius: radius,
+      onTap: () => onSelected(index),
+      child: Semantics(
+        selected: selected,
+        label: type.label,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            IconTheme.merge(
+              data: IconThemeData(color: color, size: 25),
+              child: buildIcon(type: type, selected: selected),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              type.label,
+              style: TextStyle(
+                fontSize: 11.5,
+                height: 1.2,
+                color: color,
+                fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+              ),
+            ),
+            const SizedBox(height: 3),
+            AnimatedOpacity(
+              opacity: selected ? 1 : 0,
+              duration: const Duration(milliseconds: 200),
+              child: Container(
+                width: 4,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: colorScheme.primary,
+                  shape: BoxShape.circle,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

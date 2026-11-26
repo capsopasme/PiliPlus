@@ -66,11 +66,19 @@ class HomeController extends GetxController
 
   void setTabConfig() {
     final tabs = GStorage.setting.get(SettingBoxKey.tabBarSort) as List?;
+    List<HomeTabType>? sorted;
     if (tabs != null) {
-      this.tabs = tabs.map((i) => HomeTabType.values[i]).toList();
-    } else {
-      this.tabs = HomeTabType.values;
+      // 旧设置里可能还存着直播/番剧等，只保留允许的三个（保持用户排序）
+      sorted = tabs
+          .whereType<int>()
+          .where((i) => i >= 0 && i < HomeTabType.values.length)
+          .map((i) => HomeTabType.values[i])
+          .where(HomeTabType.homeTabs.contains)
+          .toList();
     }
+    this.tabs = sorted == null || sorted.isEmpty
+        ? HomeTabType.homeTabs
+        : sorted;
 
     tabController = TabController(
       initialIndex: max(0, this.tabs.indexOf(HomeTabType.rcmd)),

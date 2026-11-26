@@ -51,20 +51,6 @@ class _VideoReplyPanelState extends State<VideoReplyPanel>
     if (_videoReplyController.loadingState.value is Loading) {
       _videoReplyController.queryData();
     }
-    ReplyPalette.backgroundType.addListener(_onBackgroundChanged);
-  }
-
-  @override
-  void dispose() {
-    ReplyPalette.backgroundType.removeListener(_onBackgroundChanged);
-    super.dispose();
-  }
-
-  /// 设置里切换评论区背景后立即生效
-  void _onBackgroundChanged() {
-    if (mounted) {
-      setState(() {});
-    }
   }
 
   @override
@@ -82,59 +68,57 @@ class _VideoReplyPanelState extends State<VideoReplyPanel>
     palette = ReplyPalette.of(context);
     final secondaryLabel = palette.secondaryLabel;
     // 不再提供「发表评论」悬浮按钮（只读）
-    return ReplyBackground(
-      child: refreshIndicator(
-        onRefresh: _videoReplyController.onRefresh,
-        isClampingScrollPhysics: widget.isNested,
-        child: CustomScrollView(
-          controller: widget.isNested
-              ? null
-              : _videoReplyController.scrollController,
-          physics: const AlwaysScrollableScrollPhysics(),
-          key: const PageStorageKey(_VideoReplyPanelState),
-          slivers: [
-            SliverFloatingHeaderWidget(
-              // 半透明悬浮排序栏：只是带 alpha 的纯色，不做实时模糊
-              backgroundColor: palette.headerBackground,
-              child: Padding(
-                padding: const .fromLTRB(16, 4, 8, 4),
-                child: Obx(() {
-                  final sortType = _videoReplyController.sortType.value;
-                  return Row(
-                    mainAxisAlignment: .spaceBetween,
-                    children: [
-                      Text(
-                        sortType.desc,
+    return refreshIndicator(
+      onRefresh: _videoReplyController.onRefresh,
+      isClampingScrollPhysics: widget.isNested,
+      child: CustomScrollView(
+        controller: widget.isNested
+            ? null
+            : _videoReplyController.scrollController,
+        physics: const AlwaysScrollableScrollPhysics(),
+        key: const PageStorageKey(_VideoReplyPanelState),
+        slivers: [
+          SliverFloatingHeaderWidget(
+            // 半透明悬浮排序栏：只是带 alpha 的纯色，不做实时模糊
+            backgroundColor: palette.headerBackground,
+            child: Padding(
+              padding: const .fromLTRB(16, 4, 8, 4),
+              child: Obx(() {
+                final sortType = _videoReplyController.sortType.value;
+                return Row(
+                  mainAxisAlignment: .spaceBetween,
+                  children: [
+                    Text(
+                      sortType.desc,
+                      style: ReplyStyle.action.copyWith(
+                        fontSize: 12.5,
+                        color: secondaryLabel,
+                      ),
+                    ),
+                    TextButton.icon(
+                      style: Style.buttonStyle,
+                      onPressed: _videoReplyController.queryBySort,
+                      icon: Icon(
+                        Icons.swap_vert_rounded,
+                        size: 15,
+                        color: palette.link,
+                      ),
+                      label: Text(
+                        sortType.descShort,
                         style: ReplyStyle.action.copyWith(
                           fontSize: 12.5,
-                          color: secondaryLabel,
-                        ),
-                      ),
-                      TextButton.icon(
-                        style: Style.buttonStyle,
-                        onPressed: _videoReplyController.queryBySort,
-                        icon: Icon(
-                          Icons.swap_vert_rounded,
-                          size: 15,
                           color: palette.link,
                         ),
-                        label: Text(
-                          sortType.descShort,
-                          style: ReplyStyle.action.copyWith(
-                            fontSize: 12.5,
-                            color: palette.link,
-                          ),
-                        ),
                       ),
-                    ],
-                  );
-                }),
-              ),
+                    ),
+                  ],
+                );
+              }),
             ),
-            const SliverToBoxAdapter(child: SizedBox(height: 2)),
-            Obx(() => _buildBody(_videoReplyController.loadingState.value)),
-          ],
-        ),
+          ),
+          const SliverToBoxAdapter(child: SizedBox(height: 2)),
+          Obx(() => _buildBody(_videoReplyController.loadingState.value)),
+        ],
       ),
     );
   }

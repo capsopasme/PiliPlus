@@ -175,6 +175,8 @@ class AccountManager extends Interceptor {
       'hdslb.com',
       'biliimg.com',
       'site/getCoin',
+      // 推荐反馈（发出即忘）
+      'x/v2/view?',
     ];
     String url = err.requestOptions.uri.toString();
     if (kDebugMode) debugPrint('🌹🌹ApiInterceptor: $url\n$err');

@@ -1,4 +1,4 @@
-import 'dart:async' show StreamSubscription, Timer;
+import 'dart:async' show Completer, StreamSubscription, Timer;
 import 'dart:convert' show ascii, utf8;
 import 'dart:io' show File, Platform;
 import 'dart:math' show max, min;
@@ -8,6 +8,7 @@ import 'package:PiliPlus/common/assets.dart';
 import 'package:PiliPlus/http/browser_ua.dart';
 import 'package:PiliPlus/http/constants.dart';
 import 'package:PiliPlus/http/loading_state.dart';
+import 'package:PiliPlus/http/rcmd_feedback.dart';
 import 'package:PiliPlus/http/video.dart';
 import 'package:PiliPlus/models/common/account_type.dart';
 import 'package:PiliPlus/models/common/audio_normalization.dart';
@@ -1759,34 +1760,96 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
     if (_fsProcessing) return;
     _fsProcessing = true;
     this.isManualFS = isManualFS;
+    if (PlatformUtils.isMobile) {
+      try {
+        if (status) {
+          await _enterMobileFullScreen(orientation);
+        } else {
+          await _exitMobileFullScreen(orientation);
+        }
+      } finally {
+        _fsProcessing = false;
+      }
+      return;
+    }
     try {
       if (status) {
-        if (PlatformUtils.isMobile) {
-          hideSystemBar();
-          await changeOrientation(
-            isVertical: isVertical,
-            orientation: orientation,
-          );
-        } else {
-          await enterDesktopFullScreen(inAppFullScreen: inAppFullScreen);
-        }
+        await enterDesktopFullScreen(inAppFullScreen: inAppFullScreen);
       } else {
-        if (PlatformUtils.isMobile) {
-          if (!removeSafeArea) {
-            showSystemBar();
-          }
-          if (orientation == null && mode == .none) {
-            return;
-          }
-          await resetScreenRotation();
-        } else {
-          await exitDesktopFullScreen();
-        }
+        await exitDesktopFullScreen();
       }
     } finally {
       _setFullScreen(status);
       _fsProcessing = false;
     }
+  }
+
+  /// 进入全屏：先在当前方向下切到全屏布局（纯黑底 + 画面）并画出来，再旋转。
+  ///
+  /// 系统的旋转动画用的是旋转开始那一刻的屏幕截图；以前是先请求旋转、
+  /// 旋转请求返回后才切全屏布局，截图里还是带白色简介/评论区的竖屏页面，
+  /// 旋转过程中就会露出白边。现在截图里只有黑底和画面。
+  Future<void> _enterMobileFullScreen(DeviceOrientation? orientation) async {
+    _setFullScreen(true);
+    hideSystemBar();
+    // 等全屏布局真正画到屏幕上（两帧：构建 + 上屏）
+    await _waitFrames(2);
+    if (!isFullScreen.value) return;
+    await changeOrientation(isVertical: isVertical, orientation: orientation);
+  }
+
+  /// 退出全屏：先请求转回竖屏，保持全屏布局直到窗口真的变成竖屏，
+  /// 再切回普通布局。
+  ///
+  /// 以前旋转请求一返回就切回普通布局，此时窗口还是横屏尺寸，
+  /// 会先画出一帧横屏尺寸的普通页面（白色简介/评论区），旋转动画里就是白边。
+  Future<void> _exitMobileFullScreen(DeviceOrientation? orientation) async {
+    if (!removeSafeArea) {
+      showSystemBar();
+    }
+    if (orientation == null && mode == .none) {
+      _setFullScreen(false);
+      return;
+    }
+    final waitPortrait = !horizontalScreen && _isViewLandscape();
+    await resetScreenRotation();
+    if (waitPortrait) {
+      await _waitForPortrait();
+    }
+    _setFullScreen(false);
+  }
+
+  static Future<void> _waitFrames(int count) async {
+    for (int i = 0; i < count; i++) {
+      final binding = WidgetsBinding.instance;
+      binding.scheduleFrame();
+      await binding.endOfFrame;
+    }
+  }
+
+  static ui.FlutterView? get _view =>
+      WidgetsBinding.instance.platformDispatcher.implicitView;
+
+  static bool _isViewLandscape() {
+    final size = _view?.physicalSize;
+    return size != null && size.width > size.height;
+  }
+
+  /// 等窗口尺寸变成竖屏（最多等 1 秒，比如用户锁定了方向或系统不转）
+  static Future<void> _waitForPortrait() {
+    if (!_isViewLandscape()) {
+      return Future<void>.value();
+    }
+    final completer = Completer<void>();
+    final observer = _MetricsObserver(() {
+      if (!_isViewLandscape() && !completer.isCompleted) {
+        completer.complete();
+      }
+    });
+    WidgetsBinding.instance.addObserver(observer);
+    return completer.future
+        .timeout(const Duration(seconds: 1), onTimeout: () {})
+        .whenComplete(() => WidgetsBinding.instance.removeObserver(observer));
   }
 
   void addPositionListener(ValueChanged<Duration> listener) {
@@ -1826,6 +1889,15 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
     }
 
     Future<void> send() {
+      // 从首页推荐点开的视频：暂停/播完/退出时同时回传给推荐系统
+      if (type != .playing && (videoType ?? _videoType) == VideoType.ugc) {
+        RcmdFeedback.onHeartbeat(
+          aid: aid ?? _aid,
+          cid: cid ?? this.cid,
+          progress: progress,
+          durationSec: durationInMilliseconds ~/ 1000,
+        );
+      }
       return VideoHttp.heartBeat(
         aid: aid ?? _aid,
         bvid: bvid ?? _bvid,
@@ -2131,4 +2203,14 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
     }
     Get.back();
   }
+}
+
+/// 只关心窗口尺寸变化的 [WidgetsBindingObserver]
+class _MetricsObserver with WidgetsBindingObserver {
+  _MetricsObserver(this.onMetricsChanged);
+
+  final VoidCallback onMetricsChanged;
+
+  @override
+  void didChangeMetrics() => onMetricsChanged();
 }

@@ -43,26 +43,20 @@ class _HomePageState extends CommonPageState<HomePage>
     super.build(context);
     Widget tabBar;
     if (_homeController.tabs.length > 1) {
-      tabBar = Padding(
-        padding: const EdgeInsets.only(top: 4),
-        child: SizedBox(
-          height: 42,
-          width: double.infinity,
-          child: TabBar(
-            controller: _homeController.tabController,
-            tabs: _homeController.tabs.map((e) => Tab(text: e.label)).toList(),
-            isScrollable: true,
-            dividerColor: Colors.transparent,
-            dividerHeight: 0,
-            splashBorderRadius: Style.mdRadius,
-            tabAlignment: TabAlignment.center,
-            onTap: (_) {
-              feedBack();
-              if (!_homeController.tabController.indexIsChanging) {
-                _homeController.animateToTop();
-              }
-            },
-          ),
+      tabBar = SizedBox(
+        height: 56,
+        width: double.infinity,
+        child: _HomeTabChips(
+          controller: _homeController.tabController,
+          labels: _homeController.tabs.map((e) => e.label).toList(),
+          onTap: (index) {
+            feedBack();
+            if (_homeController.tabController.index == index) {
+              _homeController.animateToTop();
+            } else {
+              _homeController.tabController.animateTo(index);
+            }
+          },
         ),
       );
       if (_homeController.hideTopBar &&
@@ -94,14 +88,26 @@ class _HomePageState extends CommonPageState<HomePage>
   }
 
   Widget customAppBar() {
-    const padding = EdgeInsets.fromLTRB(14, 6, 14, 0);
+    const padding = EdgeInsets.fromLTRB(16, 4, 16, 0);
     final child = Row(
       children: [
         searchBar(),
-        const SizedBox(width: 4),
-        msgBadge(_mainController),
-        const SizedBox(width: 8),
-        userAvatar(colorScheme: _colorScheme, mainController: _mainController),
+        Obx(
+          () => _mainController.accountService.isLogin.value
+              ? Padding(
+                  padding: const EdgeInsets.only(left: 10),
+                  child: _CircleSurface(child: msgBadge(_mainController)),
+                )
+              : const SizedBox.shrink(),
+        ),
+        const SizedBox(width: 10),
+        _CircleSurface(
+          child: userAvatar(
+            colorScheme: _colorScheme,
+            mainController: _mainController,
+            size: 40,
+          ),
+        ),
       ],
     );
     if (_homeController.hideTopBar) {
@@ -145,45 +151,54 @@ class _HomePageState extends CommonPageState<HomePage>
   }
 
   Widget searchBar() {
-    const borderRadius = BorderRadius.all(Radius.circular(25));
+    const borderRadius = BorderRadius.all(Radius.circular(24));
     return Expanded(
-      child: SizedBox(
-        height: 44,
-        child: Material(
-          borderRadius: borderRadius,
-          color: _colorScheme.onSecondaryContainer.withValues(alpha: 0.05),
-          child: InkWell(
-            borderRadius: borderRadius,
-            splashColor: _colorScheme.primaryContainer.withValues(
-              alpha: 0.3,
-            ),
-            onTap: () => Get.toNamed(
-              '/search',
-              parameters: _homeController.enableSearchWord
-                  ? {'hintText': _homeController.defaultSearch.value}
-                  : null,
-            ),
-            child: Row(
-              children: [
-                const SizedBox(width: 14),
-                Icon(
-                  Icons.search_outlined,
-                  color: _colorScheme.onSecondaryContainer,
-                  semanticLabel: '搜索',
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Obx(
-                    () => Text(
-                      _homeController.defaultSearch.value,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(color: _colorScheme.outline),
+      child: DecoratedBox(
+        decoration: _HomeSurface.decoration(_colorScheme, borderRadius),
+        child: SizedBox(
+          height: 46,
+          child: Material(
+            type: MaterialType.transparency,
+            child: InkWell(
+              borderRadius: borderRadius,
+              splashColor: _colorScheme.primaryContainer.withValues(
+                alpha: 0.3,
+              ),
+              onTap: () => Get.toNamed(
+                '/search',
+                parameters: _homeController.enableSearchWord
+                    ? {'hintText': _homeController.defaultSearch.value}
+                    : null,
+              ),
+              child: Row(
+                children: [
+                  const SizedBox(width: 16),
+                  Icon(
+                    Icons.search_rounded,
+                    size: 24,
+                    color: _colorScheme.onSurface,
+                    semanticLabel: '搜索',
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Obx(
+                      () {
+                        final word = _homeController.defaultSearch.value;
+                        return Text(
+                          word.isEmpty ? '搜索视频、UP主或内容…' : word,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 14.5,
+                            color: _colorScheme.outline,
+                          ),
+                        );
+                      },
                     ),
                   ),
-                ),
-                const SizedBox(width: 5),
-              ],
+                  const SizedBox(width: 12),
+                ],
+              ),
             ),
           ),
         ),
@@ -192,9 +207,148 @@ class _HomePageState extends CommonPageState<HomePage>
   }
 }
 
+/// 首页顶部这些半透明白色浮层（搜索框、圆形按钮）的统一样式
+abstract final class _HomeSurface {
+  static BoxDecoration decoration(
+    ColorScheme colorScheme,
+    BorderRadius borderRadius,
+  ) {
+    final isDark = colorScheme.brightness == Brightness.dark;
+    return BoxDecoration(
+      color: isDark
+          ? colorScheme.surfaceContainerHigh.withValues(alpha: 0.85)
+          : colorScheme.surfaceContainerLowest.withValues(alpha: 0.82),
+      borderRadius: borderRadius,
+      boxShadow: isDark
+          ? null
+          : [
+              BoxShadow(
+                color: colorScheme.shadow.withValues(alpha: 0.05),
+                blurRadius: 12,
+                offset: const Offset(0, 2),
+              ),
+            ],
+    );
+  }
+}
+
+/// 46dp 的圆形浮层，放消息铃铛/头像
+class _CircleSurface extends StatelessWidget {
+  const _CircleSurface({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox.square(
+      dimension: 46,
+      child: DecoratedBox(
+        decoration: _HomeSurface.decoration(
+          ColorScheme.of(context),
+          const BorderRadius.all(Radius.circular(23)),
+        ),
+        child: Center(child: child),
+      ),
+    );
+  }
+}
+
+/// 胶囊式标签：选中的实心主题色 + 白字 + 下方短横线，未选中的半透明白色。
+///
+/// 跟随 [TabController.animation] 过渡颜色，左右滑动页面时颜色同步渐变；
+/// 静止时不产生任何重绘。
+class _HomeTabChips extends StatelessWidget {
+  const _HomeTabChips({
+    required this.controller,
+    required this.labels,
+    required this.onTap,
+  });
+
+  final TabController controller;
+  final List<String> labels;
+  final ValueChanged<int> onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = ColorScheme.of(context);
+    final isDark = colorScheme.brightness == Brightness.dark;
+    final idleBackground = isDark
+        ? colorScheme.surfaceContainerHigh.withValues(alpha: 0.7)
+        : colorScheme.surfaceContainerLowest.withValues(alpha: 0.6);
+    final animation = controller.animation!;
+    return ListView.separated(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      itemCount: labels.length,
+      separatorBuilder: (_, _) => const SizedBox(width: 10),
+      itemBuilder: (context, index) {
+        return AnimatedBuilder(
+          animation: animation,
+          builder: (context, _) {
+            final t = (1 - (animation.value - index).abs()).clamp(0.0, 1.0);
+            final background = Color.lerp(
+              idleBackground,
+              colorScheme.primary,
+              t,
+            )!;
+            final foreground = Color.lerp(
+              colorScheme.onSurfaceVariant,
+              colorScheme.onPrimary,
+              t,
+            )!;
+            return Material(
+              color: background,
+              shape: const StadiumBorder(),
+              clipBehavior: Clip.antiAlias,
+              child: InkWell(
+                onTap: () => onTap(index),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      Text(
+                        labels[index],
+                        style: TextStyle(
+                          fontSize: 16,
+                          height: 1.2,
+                          fontWeight: t > 0.5
+                              ? FontWeight.w700
+                              : FontWeight.w500,
+                          color: foreground,
+                        ),
+                      ),
+                      // 选中项下方的短横线
+                      if (t > 0)
+                        Positioned(
+                          bottom: 3,
+                          child: Container(
+                            width: 14,
+                            height: 3,
+                            decoration: BoxDecoration(
+                              color: foreground.withValues(alpha: t),
+                              borderRadius: const BorderRadius.all(
+                                Radius.circular(1.5),
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
 Widget userAvatar({
   required ColorScheme colorScheme,
   required MainController mainController,
+  double size = 34,
 }) {
   return Semantics(
     label: "我的",
@@ -206,8 +360,8 @@ Widget userAvatar({
             children: [
               NetworkImgLayer(
                 type: .avatar,
-                width: 34,
-                height: 34,
+                width: size,
+                height: size,
                 src: mainController.accountService.face.value,
               ),
               Positioned.fill(

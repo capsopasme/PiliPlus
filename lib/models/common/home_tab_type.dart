@@ -26,6 +26,9 @@ enum HomeTabType implements EnumWithLabel {
   final String label;
   const HomeTabType(this.label);
 
+  /// 首页只保留这三个标签（直播、番剧、影视不再显示）
+  static const List<HomeTabType> homeTabs = [rcmd, hot, rank];
+
   ScrollOrRefreshMixin Function() get ctr => switch (this) {
     HomeTabType.live => Get.find<LiveController>,
     HomeTabType.rcmd => Get.find<RcmdController>,

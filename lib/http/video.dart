@@ -115,6 +115,7 @@ abstract final class VideoHttp {
   // 添加额外的loginState变量模拟未登录状态
   static Future<LoadingState<List<RcmdVideoItemAppModel>>> rcmdVideoListApp({
     required int freshIdx,
+    bool? isRefresh,
   }) async {
     final intl = _rcmdIntl;
     final params = {
@@ -138,7 +139,7 @@ abstract final class VideoHttp {
       'network': 'wifi',
       'platform': 'android',
       'player_net': 1,
-      'pull': freshIdx == 0 ? 'true' : 'false',
+      'pull': (isRefresh ?? freshIdx == 0) ? 'true' : 'false',
       'qn': 32,
       'recsys_mode': 0,
       's_locale': 'zh_CN',

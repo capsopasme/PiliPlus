@@ -148,6 +148,52 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
   final videoRelatedKey = GlobalKey();
   final videoIntroKey = GlobalKey();
 
+  /// 竖屏时「简介 / 评论」一栏：在评论区下滑时收起，上滑或回到顶部时展开
+  final ValueNotifier<bool> _tabBarShown = ValueNotifier<bool>(true);
+  double _tabBarScrollAcc = 0;
+
+  void _showTabBar(bool show) {
+    _tabBarScrollAcc = 0;
+    _tabBarShown.value = show;
+  }
+
+  bool _onTabBodyScroll(ScrollNotification notification) {
+    final metrics = notification.metrics;
+    if (metrics.axis == Axis.horizontal) {
+      // 左右切换标签页时恢复显示
+      if (notification is ScrollUpdateNotification &&
+          notification.depth == 0 &&
+          !_tabBarShown.value) {
+        _showTabBar(true);
+      }
+      return false;
+    }
+    if (notification is! ScrollUpdateNotification) {
+      return false;
+    }
+    // 只在评论区生效（竖屏布局下评论是第 2 个标签）
+    if (!videoDetailController.showReply ||
+        videoDetailController.tabCtr.index != 1) {
+      return false;
+    }
+    if (metrics.pixels <= metrics.minScrollExtent + 1) {
+      if (!_tabBarShown.value) _showTabBar(true);
+      return false;
+    }
+    final delta = notification.scrollDelta ?? 0;
+    if (delta == 0) return false;
+    if ((delta > 0) != (_tabBarScrollAcc > 0)) {
+      _tabBarScrollAcc = 0;
+    }
+    _tabBarScrollAcc += delta;
+    if (_tabBarScrollAcc > 24) {
+      if (_tabBarShown.value) _showTabBar(false);
+    } else if (_tabBarScrollAcc < -24) {
+      if (!_tabBarShown.value) _showTabBar(true);
+    }
+    return false;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -342,6 +388,7 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
 
   @override
   void dispose() {
+    _tabBarShown.dispose();
     plPlayerController
       ?..removeStatusLister(playerListener)
       ..removePositionListener(positionListener);
@@ -513,14 +560,16 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
                     final brightness = colorScheme.brightness;
                     final Brightness statusBarBrightness;
                     final Brightness statusBarIconBrightness;
-                    final backgroundColor = isPortrait && scrollRatio > 0
+                    // 全屏（含旋转过程中）状态栏区域始终为黑色，避免出现浅色条
+                    final backgroundColor =
+                        !isFullScreen && isPortrait && scrollRatio > 0
                         ? Color.lerp(
                             Colors.black,
                             colorScheme.surface,
                             scrollRatio,
                           )!
                         : Colors.black;
-                    if (isPortrait && scrollRatio >= 0.5) {
+                    if (!isFullScreen && isPortrait && scrollRatio >= 0.5) {
                       statusBarBrightness = brightness;
                       statusBarIconBrightness = brightness.reverse;
                     } else {
@@ -599,17 +648,37 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
               key: videoDetailController.childKey,
               body: Column(
                 children: [
-                  buildTabBar(onTap: videoDetailController.animToTop),
+                  ValueListenableBuilder<bool>(
+                    valueListenable: _tabBarShown,
+                    builder: (context, shown, child) => ClipRect(
+                      child: AnimatedAlign(
+                        alignment: Alignment.bottomCenter,
+                        heightFactor: shown ? 1.0 : 0.0,
+                        duration: const Duration(milliseconds: 220),
+                        curve: Curves.easeOutCubic,
+                        child: child,
+                      ),
+                    ),
+                    child: buildTabBar(
+                      onTap: () {
+                        _showTabBar(true);
+                        videoDetailController.animToTop();
+                      },
+                    ),
+                  ),
                   Expanded(
-                    child: tabBarView(
-                      hitTestBehavior: .translucent,
-                      controller: videoDetailController.tabCtr,
-                      children: [
-                        videoIntro(isHorizontal: false, needCtr: false),
-                        if (videoDetailController.showReply)
-                          videoReplyPanel(isNested: true),
-                        if (_shouldShowSeasonPanel) seasonPanel,
-                      ],
+                    child: NotificationListener<ScrollNotification>(
+                      onNotification: _onTabBodyScroll,
+                      child: tabBarView(
+                        hitTestBehavior: .translucent,
+                        controller: videoDetailController.tabCtr,
+                        children: [
+                          videoIntro(isHorizontal: false, needCtr: false),
+                          if (videoDetailController.showReply)
+                            videoReplyPanel(isNested: true),
+                          if (_shouldShowSeasonPanel) seasonPanel,
+                        ],
+                      ),
                     ),
                   ),
                 ],
@@ -1333,11 +1402,19 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
         labelPadding: .zero,
         dividerColor: Colors.transparent,
         controller: videoDetailController.tabCtr,
-        indicator: flag ? const BoxDecoration() : null,
-        labelColor: flag ? colorScheme.onSurface : null,
-        labelStyle:
-            TabBarTheme.of(context).labelStyle?.copyWith(fontSize: 13) ??
-            const TextStyle(fontSize: 13),
+        indicatorSize: TabBarIndicatorSize.tab,
+        indicator: flag
+            ? const BoxDecoration()
+            : UnderlineTabIndicator(
+                borderRadius: const BorderRadius.all(Radius.circular(2)),
+                borderSide: BorderSide(width: 3.5, color: colorScheme.primary),
+                insets: const EdgeInsets.fromLTRB(22, 0, 22, 5),
+              ),
+        labelColor: flag ? colorScheme.onSurface : colorScheme.primary,
+        unselectedLabelColor: colorScheme.outline,
+        labelStyle: const TextStyle(fontSize: 15.5, fontWeight: FontWeight.w600),
+        unselectedLabelStyle: const TextStyle(fontSize: 15.5),
+        splashBorderRadius: const BorderRadius.all(Radius.circular(14)),
         onTap: (value) {
           void animToTop() {
             if (onTap != null) {
@@ -1381,62 +1458,93 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
       );
     }
 
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        border: Border(
-          bottom: BorderSide(
-            color: theme.dividerColor.withValues(alpha: 0.1),
-          ),
+    final isDark = colorScheme.brightness == Brightness.dark;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 6, 12, 6),
+      child: DecoratedBox(
+        // 圆角卡片 + 很淡的投影（RRect 阴影走快速路径，开销很小）
+        decoration: BoxDecoration(
+          color: isDark
+              ? colorScheme.surfaceContainerHigh
+              : Color.alphaBlend(
+                  colorScheme.primary.withValues(alpha: 0.03),
+                  colorScheme.surfaceContainerLowest,
+                ),
+          borderRadius: const BorderRadius.all(Radius.circular(16)),
+          boxShadow: isDark
+              ? null
+              : [
+                  BoxShadow(
+                    color: colorScheme.shadow.withValues(alpha: 0.06),
+                    blurRadius: 12,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
         ),
-      ),
-      child: SizedBox(
-        height: 45,
-        child: Row(
-          children: [
-            if (tabs.isEmpty)
-              const Spacer()
-            else
-              Expanded(
-                child: Align(
-                  alignment: .centerLeft,
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(maxWidth: 96.0 * tabs.length),
-                    child: tabBar(),
+        child: SizedBox(
+          height: 46,
+          child: Row(
+            children: [
+              if (tabs.isEmpty)
+                const Spacer()
+              else
+                Expanded(
+                  child: Align(
+                    alignment: .centerLeft,
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxWidth: 104.0 * tabs.length,
+                      ),
+                      child: tabBar(),
+                    ),
+                  ),
+                ),
+              Padding(
+                padding: const EdgeInsets.only(right: 5),
+                child: SizedBox.square(
+                  dimension: 36,
+                  child: Obx(
+                    () {
+                      final ctr = videoDetailController.plPlayerController;
+                      final enableShowDanmaku = ctr.enableShowDanmaku.value;
+                      return IconButton(
+                        style: IconButton.styleFrom(
+                          padding: EdgeInsets.zero,
+                          backgroundColor: colorScheme.primary.withValues(
+                            alpha: enableShowDanmaku ? 0.10 : 0.05,
+                          ),
+                          shape: const RoundedRectangleBorder(
+                            borderRadius: BorderRadius.all(
+                              Radius.circular(11),
+                            ),
+                          ),
+                        ),
+                        onPressed: () {
+                          final newVal = !enableShowDanmaku;
+                          ctr.enableShowDanmaku.value = newVal;
+                          if (!ctr.tempPlayerConf) {
+                            GStorage.setting.put(
+                              SettingBoxKey.enableShowDanmaku,
+                              newVal,
+                            );
+                          }
+                        },
+                        icon: Icon(
+                          size: 21,
+                          enableShowDanmaku
+                              ? CustomIcons.dm_on
+                              : CustomIcons.dm_off,
+                          color: enableShowDanmaku
+                              ? colorScheme.primary
+                              : colorScheme.outline,
+                        ),
+                      );
+                    },
                   ),
                 ),
               ),
-            SizedBox.square(
-              dimension: 38,
-              child: Obx(
-                () {
-                  final ctr = videoDetailController.plPlayerController;
-                  final enableShowDanmaku = ctr.enableShowDanmaku.value;
-                  return IconButton(
-                    onPressed: () {
-                      final newVal = !enableShowDanmaku;
-                      ctr.enableShowDanmaku.value = newVal;
-                      if (!ctr.tempPlayerConf) {
-                        GStorage.setting.put(
-                          SettingBoxKey.enableShowDanmaku,
-                          newVal,
-                        );
-                      }
-                    },
-                    icon: Icon(
-                      size: 22,
-                      enableShowDanmaku
-                          ? CustomIcons.dm_on
-                          : CustomIcons.dm_off,
-                      color: enableShowDanmaku
-                          ? colorScheme.secondary
-                          : colorScheme.outline,
-                    ),
-                  );
-                },
-              ),
-            ),
-            const SizedBox(width: 14),
-          ],
+            ],
+          ),
         ),
       ),
     );

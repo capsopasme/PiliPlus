@@ -1,4 +1,3 @@
-import 'package:PiliPlus/common/skeleton/video_card_v.dart';
 import 'package:PiliPlus/common/sliver_single_child_delegate.dart';
 import 'package:PiliPlus/common/style.dart';
 import 'package:PiliPlus/common/widgets/flutter/refresh_indicator.dart';
@@ -29,34 +28,30 @@ class _RcmdPageState extends State<RcmdPage>
   Widget build(BuildContext context) {
     super.build(context);
     final colorScheme = ColorScheme.of(context);
-    return Container(
-      clipBehavior: .hardEdge,
-      margin: const .symmetric(horizontal: Style.safeSpace),
-      decoration: const BoxDecoration(borderRadius: Style.mdRadius),
-      child: refreshIndicator(
-        onRefresh: controller.onRefresh,
-        child: CustomScrollView(
-          controller: controller.scrollController,
-          physics: const AlwaysScrollableScrollPhysics(),
-          slivers: [
-            SliverPadding(
-              padding: const .only(top: Style.cardSpace, bottom: 100),
-              sliver: Obx(
-                () => _buildBody(colorScheme, controller.loadingState.value),
-              ),
+    // 不再裁剪列表外框：卡片带淡投影，裁剪会把两侧的阴影切掉
+    return refreshIndicator(
+      onRefresh: controller.onRefresh,
+      child: CustomScrollView(
+        controller: controller.scrollController,
+        physics: const AlwaysScrollableScrollPhysics(),
+        slivers: [
+          SliverPadding(
+            padding: const .fromLTRB(14, 6, 14, 120),
+            sliver: Obx(
+              () => _buildBody(colorScheme, controller.loadingState.value),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 
   late final gridDelegate = SliverGridDelegateWithExtentAndRatio(
-    mainAxisSpacing: Style.cardSpace,
-    crossAxisSpacing: Style.cardSpace,
+    mainAxisSpacing: 14,
+    crossAxisSpacing: 12,
     maxCrossAxisExtent: Pref.recommendCardWidth,
     childAspectRatio: Style.aspectRatio,
-    mainAxisExtent: MediaQuery.textScalerOf(context).scale(90),
+    mainAxisExtent: VideoCardV.contentExtent(MediaQuery.textScalerOf(context)),
   );
 
   Widget _buildBody(
@@ -79,7 +74,8 @@ class _RcmdPageState extends State<RcmdPage>
                         onTap: () => controller
                           ..animateToTop()
                           ..onRefresh(),
-                        child: Card(
+                        child: DecoratedBox(
+                          decoration: VideoCardV.decoration(colorScheme),
                           child: Container(
                             alignment: Alignment.center,
                             padding: const .symmetric(horizontal: 10),
@@ -135,7 +131,7 @@ class _RcmdPageState extends State<RcmdPage>
     gridDelegate: gridDelegate,
     delegate: const SliverSingleChildDelegate(
       count: 10,
-      child: VideoCardVSkeleton(),
+      child: VideoCardVRcmdSkeleton(),
     ),
   );
 }

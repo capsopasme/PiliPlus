@@ -24,6 +24,15 @@ List<SettingsModel> get recommendSettings => [
     defaultVal: true,
     needReboot: true,
   ),
+  const SwitchModel(
+    title: '向推荐系统回传点击和观看',
+    subtitle:
+        '像官方客户端一样，点开首页推荐时带上推荐追踪 id，并在暂停/看完时上报观看时长，让首页推荐跟着你最近看的内容变化',
+    leading: Icon(Icons.insights_outlined),
+    setKey: SettingBoxKey.rcmdFeedback,
+    defaultVal: true,
+    needReboot: true,
+  ),
   SwitchModel(
     title: '保留首页推荐刷新',
     subtitle: '下拉刷新时保留上次内容',

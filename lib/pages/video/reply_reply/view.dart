@@ -145,13 +145,9 @@ class _VideoReplyReplyPanelState extends State<VideoReplyReplyPanel>
   @override
   Widget buildPage(ThemeData theme) {
     Widget child() => enableSlide ? slideList(theme) : buildList(theme);
-    return ReplyBackground(
-      child: SimpleColoredBox(
-        color: ReplyPalette.of(context).parchment
-            ? Colors.transparent
-            : theme.canvasColor,
-        child: _buildScaffold(theme, child),
-      ),
+    return SimpleColoredBox(
+      color: theme.canvasColor,
+      child: _buildScaffold(theme, child),
     );
   }
 
@@ -328,7 +324,7 @@ class _VideoReplyReplyPanelState extends State<VideoReplyReplyPanel>
               color: _colorAnimation ??= _controller.animController.drive(
                 ColorTween(
                   begin: highlight.withValues(alpha: 0.14),
-                  // 渐隐到全透明，透出底下的背景（羊皮纸/页面底色）
+                  // 渐隐到全透明，透出页面底色
                   end: highlight.withValues(alpha: 0),
                   // 前0.8s不变, 后0.2s开始动画
                 ).chain(CurveTween(curve: const Interval(0.8, 1.0))),
